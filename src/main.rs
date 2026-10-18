@@ -3,7 +3,7 @@ use argon2::{
     Argon2,
 };
 use axum::{
-    extract::{Path, State},
+    extract::{DefaultBodyLimit, Multipart, Path, State},
     http::{header, HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{get, post},
@@ -32,12 +32,6 @@ struct Credentials {
 #[derive(Serialize)]
 struct UserInfo {
     username: String,
-}
-
-#[derive(Deserialize)]
-struct NewPost {
-    image_url: String,
-    caption: String,
 }
 
 async fn feed(
@@ -225,21 +219,75 @@ async fn current_user_id(pool: &PgPool, headers: &HeaderMap) -> Result<i32, Stat
     row.map(|(id,)| id).ok_or(StatusCode::UNAUTHORIZED)
 }
 
+// Works out the real image type from the file's first bytes (never from its name).
+// Returns None for anything that isn't a JPEG, PNG, WebP or GIF.
+fn image_extension(b: &[u8]) -> Option<&'static str> {
+    if b.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("jpg")
+    } else if b.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+        Some("png")
+    } else if b.len() >= 12 && &b[0..4] == b"RIFF" && &b[8..12] == b"WEBP" {
+        Some("webp")
+    } else if b.starts_with(b"GIF87a") || b.starts_with(b"GIF89a") {
+        Some("gif")
+    } else {
+        None
+    }
+}
+
 async fn create_post(
     State(pool): State<PgPool>,
     headers: HeaderMap,
-    Json(p): Json<NewPost>,
+    mut multipart: Multipart,
 ) -> Result<StatusCode, StatusCode> {
     let user_id = current_user_id(&pool, &headers).await?;
-    let url = p.image_url.trim();
-    let caption = p.caption.trim();
-    let url_ok = url.starts_with("https://") || url.starts_with("http://");
-    if !url_ok || url.len() > 500 || caption.len() > 500 {
+
+    let mut caption = String::new();
+    let mut image: Option<(Vec<u8>, &'static str)> = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+    {
+        let name = field.name().map(|s| s.to_string());
+        match name.as_deref() {
+            Some("caption") => {
+                caption = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+            }
+            Some("image") => {
+                let bytes = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+                let ext = image_extension(&bytes).ok_or(StatusCode::UNSUPPORTED_MEDIA_TYPE)?;
+                image = Some((bytes.to_vec(), ext));
+            }
+            _ => {}
+        }
+    }
+
+    let (bytes, ext) = image.ok_or(StatusCode::BAD_REQUEST)?;
+    let caption = caption.trim();
+    if caption.len() > 500 {
         return Err(StatusCode::BAD_REQUEST);
     }
+
+    // Random file name, extension chosen by us, so uploads can't overwrite each other
+    // or sneak in a name like "../something".
+    let filename = format!("{}.{}", uuid::Uuid::new_v4(), ext);
+    tokio::fs::create_dir_all("static/uploads").await.map_err(|e| {
+        eprintln!("could not create uploads folder: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    tokio::fs::write(format!("static/uploads/{filename}"), &bytes)
+        .await
+        .map_err(|e| {
+            eprintln!("could not save upload: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let url = format!("/uploads/{filename}");
     sqlx::query("INSERT INTO posts (user_id, image_url, caption) VALUES ($1, $2, $3)")
         .bind(user_id)
-        .bind(url)
+        .bind(&url)
         .bind(caption)
         .execute(&pool)
         .await
@@ -309,7 +357,10 @@ async fn main() {
         .route("/api/login", post(login))
         .route("/api/me", get(me))
         .route("/api/logout", post(logout))
-        .route("/api/posts", post(create_post))
+        .route(
+            "/api/posts",
+            post(create_post).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
+        )
         .route("/api/posts/{id}/like", post(like_post).delete(unlike_post))
         .fallback_service(ServeDir::new("static"))
         .with_state(pool);

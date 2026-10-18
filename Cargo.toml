@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 argon2 = "0.5"
-axum = "0.8.9"
+axum = { version = "0.8.9", features = ["multipart"] }
 dotenvy = "0.15.7"
 rand_core = { version = "0.6", features = ["getrandom"] }
 serde = { version = "1.0.229", features = ["derive"] }

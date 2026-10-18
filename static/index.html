@@ -14,7 +14,7 @@
     #msg { color: #c00; font-size: 12px; }
     #composer { max-width: 470px; margin: 20px auto 0; display: flex; flex-direction: column; gap: 6px; background: #fff; border: 1px solid #dbdbdb; border-radius: 8px; padding: 12px; }
     #composer:empty { display: none; }
-    #composer input { padding: 6px; border: 1px solid #dbdbdb; border-radius: 4px; }
+    #composer input[type=text] { padding: 6px; border: 1px solid #dbdbdb; border-radius: 4px; }
     #feed { max-width: 470px; margin: 20px auto; }
     .card { background: #fff; border: 1px solid #dbdbdb; border-radius: 8px; margin-bottom: 24px; }
     .user { display: flex; align-items: center; gap: 10px; padding: 12px; font-weight: 600; }
@@ -60,18 +60,31 @@
       const box = document.getElementById('composer');
       box.textContent = '';
       if (!loggedIn) return;
-      const url = el('input'); url.placeholder = 'Image URL (https://...)';
-      const cap = el('input'); cap.placeholder = 'Caption';
+
+      const file = el('input');
+      file.type = 'file';
+      file.accept = 'image/jpeg,image/png,image/webp,image/gif';
+      const cap = el('input'); cap.type = 'text'; cap.placeholder = 'Caption';
       const msg = el('span'); msg.style.color = '#c00'; msg.style.fontSize = '12px';
       const btn = el('button', 'Post');
+
       btn.onclick = async () => {
-        const r = await post('/api/posts', { image_url: url.value, caption: cap.value });
-        if (r.ok) { url.value = ''; cap.value = ''; msg.textContent = ''; loadFeed(); }
-        else if (r.status === 400) msg.textContent = 'Image URL must start with https:// (and captions are max 500 characters)';
+        if (!file.files[0]) { msg.textContent = 'Choose a photo first'; return; }
+        const fd = new FormData();
+        fd.append('caption', cap.value);
+        fd.append('image', file.files[0]);
+        btn.disabled = true;
+        msg.textContent = 'Uploading...';
+        const r = await fetch('/api/posts', { method: 'POST', body: fd });
+        btn.disabled = false;
+        if (r.ok) { file.value = ''; cap.value = ''; msg.textContent = ''; loadFeed(); }
+        else if (r.status === 413) msg.textContent = 'Photo too large (max 10 MB)';
+        else if (r.status === 415) msg.textContent = 'Only JPEG, PNG, WebP or GIF photos';
+        else if (r.status === 400) msg.textContent = 'Check the photo and keep the caption under 500 characters';
         else if (r.status === 401) msg.textContent = 'Please log in again';
         else msg.textContent = 'Something went wrong';
       };
-      box.append(url, cap, btn, msg);
+      box.append(file, cap, btn, msg);
     }
 
     async function renderAuth() {
