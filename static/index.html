@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Insta Clone</title>
+  <style>
+    body { margin: 0; background: #fafafa; font-family: system-ui, sans-serif; }
+    header { background: #fff; border-bottom: 1px solid #dbdbdb; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; }
+    .logo { font-weight: 700; font-size: 20px; }
+    #auth { display: flex; gap: 6px; align-items: center; font-size: 14px; }
+    #auth input { padding: 5px; width: 100px; border: 1px solid #dbdbdb; border-radius: 4px; }
+    button { padding: 5px 10px; border: 1px solid #dbdbdb; border-radius: 4px; background: #fff; cursor: pointer; }
+    #msg { color: #c00; font-size: 12px; }
+    #composer { max-width: 470px; margin: 20px auto 0; display: flex; flex-direction: column; gap: 6px; background: #fff; border: 1px solid #dbdbdb; border-radius: 8px; padding: 12px; }
+    #composer:empty { display: none; }
+    #composer input { padding: 6px; border: 1px solid #dbdbdb; border-radius: 4px; }
+    #feed { max-width: 470px; margin: 20px auto; }
+    .card { background: #fff; border: 1px solid #dbdbdb; border-radius: 8px; margin-bottom: 24px; }
+    .user { display: flex; align-items: center; gap: 10px; padding: 12px; font-weight: 600; }
+    .avatar { width: 32px; height: 32px; border-radius: 50%; background: #c7c7c7; }
+    .card img { width: 100%; display: block; }
+    .actions { padding: 10px 12px 0; display: flex; align-items: center; gap: 8px; }
+    .actions .like { background: none; border: none; font-size: 26px; padding: 0; cursor: pointer; }
+    .hint { color: #c00; font-size: 12px; }
+    .meta { padding: 4px 12px 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="logo">InstaClone</span>
+    <div id="auth"></div>
+  </header>
+  <div id="composer"></div>
+  <div id="feed"></div>
+
+  <script>
+    let loggedIn = false;
+
+    function el(tag, text, cls) {
+      const e = document.createElement(tag);
+      if (text !== undefined) e.textContent = text;
+      if (cls) e.className = cls;
+      return e;
+    }
+
+    async function post(path, body) {
+      return fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    }
+
+    function likesText(n) {
+      return n + (n === 1 ? ' like' : ' likes');
+    }
+
+    function renderComposer() {
+      const box = document.getElementById('composer');
+      box.textContent = '';
+      if (!loggedIn) return;
+      const url = el('input'); url.placeholder = 'Image URL (https://...)';
+      const cap = el('input'); cap.placeholder = 'Caption';
+      const msg = el('span'); msg.style.color = '#c00'; msg.style.fontSize = '12px';
+      const btn = el('button', 'Post');
+      btn.onclick = async () => {
+        const r = await post('/api/posts', { image_url: url.value, caption: cap.value });
+        if (r.ok) { url.value = ''; cap.value = ''; msg.textContent = ''; loadFeed(); }
+        else if (r.status === 400) msg.textContent = 'Image URL must start with https:// (and captions are max 500 characters)';
+        else if (r.status === 401) msg.textContent = 'Please log in again';
+        else msg.textContent = 'Something went wrong';
+      };
+      box.append(url, cap, btn, msg);
+    }
+
+    async function renderAuth() {
+      const box = document.getElementById('auth');
+      box.textContent = '';
+      const res = await fetch('/api/me');
+      loggedIn = res.ok;
+      renderComposer();
+
+      if (res.ok) {
+        const me = await res.json();
+        const out = el('button', 'Log out');
+        out.onclick = async () => { await post('/api/logout'); renderAuth(); };
+        box.append(el('span', '@' + me.username), out);
+      } else {
+        const u = el('input'); u.placeholder = 'username';
+        const p = el('input'); p.placeholder = 'password'; p.type = 'password';
+        const msg = el('span'); msg.id = 'msg';
+        const login = el('button', 'Log in');
+        const signup = el('button', 'Sign up');
+
+        async function submit(path) {
+          const r = await post(path, { username: u.value, password: p.value });
+          if (r.ok) return renderAuth();
+          if (r.status === 401) msg.textContent = 'Wrong username or password';
+          else if (r.status === 409) msg.textContent = 'Username already taken';
+          else if (r.status === 400) msg.textContent = 'Username: 3-30 letters/numbers/_ , password: 8+ characters';
+          else msg.textContent = 'Something went wrong';
+        }
+        login.onclick = () => submit('/api/login');
+        signup.onclick = () => submit('/api/signup');
+        box.append(u, p, login, signup, msg);
+      }
+
+      loadFeed(); // reload so hearts match who is logged in
+    }
+
+    async function loadFeed() {
+      const posts = await (await fetch('/api/feed')).json();
+      const feed = document.getElementById('feed');
+      feed.textContent = '';
+
+      posts.forEach(p => {
+        const card = el('div', undefined, 'card');
+        const user = el('div', undefined, 'user');
+        user.append(el('div', undefined, 'avatar'), document.createTextNode(p.user));
+
+        const img = el('img'); img.src = p.image_url;
+
+        const actions = el('div', undefined, 'actions');
+        const heart = el('button', undefined, 'like');
+        const hint = el('span', undefined, 'hint');
+        actions.append(heart, hint);
+
+        const meta = el('div', undefined, 'meta');
+        const count = el('b');
+        meta.append(count, el('br'), el('b', p.user), document.createTextNode(' ' + p.caption));
+
+        function paint() {
+          heart.textContent = p.liked_by_me ? '♥' : '♡';
+          heart.style.color = p.liked_by_me ? '#e0245e' : '';
+          count.textContent = likesText(p.likes);
+        }
+        paint();
+
+        heart.onclick = async () => {
+          if (!loggedIn) { hint.textContent = 'Log in to like posts'; return; }
+          hint.textContent = '';
+          const r = await fetch('/api/posts/' + p.id + '/like', {
+            method: p.liked_by_me ? 'DELETE' : 'POST',
+          });
+          if (r.ok) {
+            p.likes += p.liked_by_me ? -1 : 1;
+            p.liked_by_me = !p.liked_by_me;
+            paint();
+          } else if (r.status === 401) {
+            hint.textContent = 'Please log in again';
+          }
+        };
+
+        card.append(user, img, actions, meta);
+        feed.append(card);
+      });
+    }
+
+    renderAuth();
+  </script>
+</body>
+</html>
