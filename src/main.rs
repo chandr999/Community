@@ -3,7 +3,7 @@ use argon2::{
     Argon2,
 };
 use axum::{
-    extract::{DefaultBodyLimit, Multipart, Path, State},
+    extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     http::{header, HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{get, post},
@@ -31,6 +31,28 @@ struct Comment {
     body: String,
 }
 
+#[derive(Serialize, FromRow)]
+struct GridPost {
+    id: i32,
+    image_url: String,
+}
+
+#[derive(Serialize)]
+struct Profile {
+    username: String,
+    post_count: i64,
+    follower_count: i64,
+    following_count: i64,
+    followed_by_me: bool,
+    is_me: bool,
+    posts: Vec<GridPost>,
+}
+
+#[derive(Deserialize)]
+struct FeedQuery {
+    scope: Option<String>,
+}
+
 #[derive(Deserialize)]
 struct NewComment {
     body: String,
@@ -50,9 +72,12 @@ struct UserInfo {
 async fn feed(
     State(pool): State<PgPool>,
     headers: HeaderMap,
+    Query(q): Query<FeedQuery>,
 ) -> Result<Json<Vec<Post>>, StatusCode> {
     // Logged-out visitors can still read the feed; they just never have a "liked" heart.
     let me: Option<i32> = current_user_id(&pool, &headers).await.ok();
+    // scope=following shows only your own posts and posts from people you follow.
+    let following_only = q.scope.as_deref() == Some("following");
 
     let posts = sqlx::query_as::<_, Post>(
         r#"
@@ -66,10 +91,14 @@ async fn feed(
                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count
         FROM posts p
         JOIN users u ON u.id = p.user_id
+        WHERE (NOT $2
+               OR p.user_id = $1
+               OR p.user_id IN (SELECT followee_id FROM follows WHERE follower_id = $1))
         ORDER BY p.id DESC
         "#,
     )
     .bind(me)
+    .bind(following_only)
     .fetch_all(&pool)
     .await
     .map_err(|e| {
@@ -418,6 +447,117 @@ async fn add_comment(
     Ok((StatusCode::CREATED, Json(row)))
 }
 
+async fn profile(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+) -> Result<Json<Profile>, StatusCode> {
+    let me: Option<i32> = current_user_id(&pool, &headers).await.ok();
+
+    let row: Option<(i32, String, i64, i64, i64, bool)> = sqlx::query_as(
+        r#"
+        SELECT u.id,
+               u.username,
+               (SELECT COUNT(*) FROM posts WHERE user_id = u.id),
+               (SELECT COUNT(*) FROM follows WHERE followee_id = u.id),
+               (SELECT COUNT(*) FROM follows WHERE follower_id = u.id),
+               EXISTS (SELECT 1 FROM follows
+                       WHERE follower_id = $2 AND followee_id = u.id)
+        FROM users u
+        WHERE u.username = $1
+        "#,
+    )
+    .bind(&username)
+    .bind(me)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("profile query failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let (user_id, username, post_count, follower_count, following_count, followed_by_me) =
+        row.ok_or(StatusCode::NOT_FOUND)?;
+
+    let posts = sqlx::query_as::<_, GridPost>(
+        "SELECT id, image_url FROM posts WHERE user_id = $1 ORDER BY id DESC LIMIT 60",
+    )
+    .bind(user_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("profile posts failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    Ok(Json(Profile {
+        username,
+        post_count,
+        follower_count,
+        following_count,
+        followed_by_me,
+        is_me: me == Some(user_id),
+        posts,
+    }))
+}
+
+async fn follow_user(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+) -> Result<StatusCode, StatusCode> {
+    let me = current_user_id(&pool, &headers).await?;
+
+    let target: Option<(i32,)> = sqlx::query_as("SELECT id FROM users WHERE username = $1")
+        .bind(&username)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| {
+            eprintln!("follow lookup failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    let (target_id,) = target.ok_or(StatusCode::NOT_FOUND)?;
+
+    if target_id == me {
+        return Err(StatusCode::BAD_REQUEST); // you can't follow yourself
+    }
+
+    sqlx::query(
+        "INSERT INTO follows (follower_id, followee_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+    )
+    .bind(me)
+    .bind(target_id)
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("follow failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn unfollow_user(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+) -> Result<StatusCode, StatusCode> {
+    let me = current_user_id(&pool, &headers).await?;
+    sqlx::query(
+        "DELETE FROM follows
+         WHERE follower_id = $1
+           AND followee_id = (SELECT id FROM users WHERE username = $2)",
+    )
+    .bind(me)
+    .bind(&username)
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("unfollow failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
@@ -441,6 +581,11 @@ async fn main() {
         )
         .route("/api/posts/{id}/like", post(like_post).delete(unlike_post))
         .route("/api/posts/{id}/comments", get(list_comments).post(add_comment))
+        .route("/api/users/{username}", get(profile))
+        .route(
+            "/api/users/{username}/follow",
+            post(follow_user).delete(unfollow_user),
+        )
         .fallback_service(ServeDir::new("static"))
         .with_state(pool);
 

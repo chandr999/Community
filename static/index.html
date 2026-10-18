@@ -5,20 +5,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Insta Clone</title>
   <style>
+    [hidden] { display: none !important; }
     body { margin: 0; background: #fafafa; font-family: system-ui, sans-serif; }
-    header { background: #fff; border-bottom: 1px solid #dbdbdb; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; }
-    .logo { font-weight: 700; font-size: 20px; }
+    header { background: #fff; border-bottom: 1px solid #dbdbdb; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 5; }
+    .logo { font-weight: 700; font-size: 20px; color: inherit; text-decoration: none; }
     #auth { display: flex; gap: 6px; align-items: center; font-size: 14px; }
     #auth input { padding: 5px; width: 100px; border: 1px solid #dbdbdb; border-radius: 4px; }
     button { padding: 5px 10px; border: 1px solid #dbdbdb; border-radius: 4px; background: #fff; cursor: pointer; }
     #msg { color: #c00; font-size: 12px; }
+    .ulink { color: inherit; text-decoration: none; font-weight: 600; }
+    .ulink:hover { text-decoration: underline; }
     #composer { max-width: 470px; margin: 20px auto 0; display: flex; flex-direction: column; gap: 6px; background: #fff; border: 1px solid #dbdbdb; border-radius: 8px; padding: 12px; }
     #composer:empty { display: none; }
     #composer input[type=text] { padding: 6px; border: 1px solid #dbdbdb; border-radius: 4px; }
+    #tabs { max-width: 470px; margin: 16px auto 0; display: flex; gap: 8px; }
+    #tabs:empty { display: none; }
+    #tabs .tab.active { background: #262626; color: #fff; border-color: #262626; }
     #feed { max-width: 470px; margin: 20px auto; }
+    .empty { color: #737373; text-align: center; padding: 24px 0; }
     .card { background: #fff; border: 1px solid #dbdbdb; border-radius: 8px; margin-bottom: 24px; }
-    .user { display: flex; align-items: center; gap: 10px; padding: 12px; font-weight: 600; }
-    .avatar { width: 32px; height: 32px; border-radius: 50%; background: #c7c7c7; }
+    .user { display: flex; align-items: center; gap: 10px; padding: 12px; }
+    .avatar { width: 32px; height: 32px; border-radius: 50%; background: #c7c7c7; flex: none; }
     .card img { width: 100%; display: block; }
     .actions { padding: 10px 12px 0; display: flex; align-items: center; gap: 8px; }
     .actions .like { background: none; border: none; font-size: 26px; padding: 0; cursor: pointer; }
@@ -29,18 +36,31 @@
     .comments .row { margin-bottom: 6px; word-wrap: break-word; }
     .comments .newcomment { display: flex; gap: 6px; margin-top: 8px; }
     .comments .newcomment input { flex: 1; padding: 6px; border: 1px solid #dbdbdb; border-radius: 4px; }
+    #profileView { max-width: 600px; margin: 20px auto; padding: 0 12px; }
+    #profileView .back { color: #737373; text-decoration: none; font-size: 14px; }
+    #profileView .phead { display: flex; align-items: center; gap: 20px; margin: 16px 0; flex-wrap: wrap; }
+    #profileView .pname { font-size: 22px; font-weight: 700; }
+    #profileView .stats { display: flex; gap: 20px; font-size: 14px; margin-bottom: 16px; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+    .grid img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: #eee; }
   </style>
 </head>
 <body>
   <header>
-    <span class="logo">InstaClone</span>
+    <a class="logo" href="#/">InstaClone</a>
     <div id="auth"></div>
   </header>
-  <div id="composer"></div>
-  <div id="feed"></div>
+
+  <div id="homeView">
+    <div id="composer"></div>
+    <div id="tabs"></div>
+    <div id="feed"></div>
+  </div>
+  <div id="profileView" hidden></div>
 
   <script>
     let loggedIn = false;
+    let scope = 'all'; // 'all' or 'following'
 
     function el(tag, text, cls) {
       const e = document.createElement(tag);
@@ -61,12 +81,101 @@
       return n + (n === 1 ? ' like' : ' likes');
     }
 
+    function userLink(name) {
+      const a = el('a', name, 'ulink');
+      a.href = '#/u/' + encodeURIComponent(name);
+      return a;
+    }
+
     function commentRow(c) {
       const row = el('div', undefined, 'row');
-      row.append(el('b', c.user), document.createTextNode(' ' + c.body));
+      row.append(userLink(c.user), document.createTextNode(' ' + c.body));
       return row;
     }
 
+    // ---------- routing ----------
+    function route() {
+      const h = location.hash;
+      if (h.startsWith('#/u/')) {
+        showProfile(decodeURIComponent(h.slice(4)));
+      } else {
+        showHome();
+      }
+    }
+
+    function showHome() {
+      document.getElementById('homeView').hidden = false;
+      document.getElementById('profileView').hidden = true;
+      renderTabs();
+      loadFeed();
+    }
+
+    function renderTabs() {
+      const box = document.getElementById('tabs');
+      box.textContent = '';
+      if (!loggedIn) { scope = 'all'; return; }
+      [['all', 'Everyone'], ['following', 'Following']].forEach(([key, label]) => {
+        const b = el('button', label, 'tab' + (scope === key ? ' active' : ''));
+        b.onclick = () => { scope = key; renderTabs(); loadFeed(); };
+        box.append(b);
+      });
+    }
+
+    // ---------- profile page ----------
+    async function showProfile(name) {
+      document.getElementById('homeView').hidden = true;
+      const view = document.getElementById('profileView');
+      view.hidden = false;
+      view.textContent = '';
+
+      const back = el('a', '← Back to feed', 'back');
+      back.href = '#/';
+      view.append(back);
+
+      const res = await fetch('/api/users/' + encodeURIComponent(name));
+      if (!res.ok) { view.append(el('p', 'User not found', 'empty')); return; }
+      const pr = await res.json();
+
+      const head = el('div', undefined, 'phead');
+      head.append(el('span', '@' + pr.username, 'pname'));
+
+      if (pr.is_me) {
+        head.append(el('span', "That's you", 'hint'));
+      } else if (!loggedIn) {
+        head.append(el('span', 'Log in to follow', 'hint'));
+      } else {
+        const fb = el('button', pr.followed_by_me ? 'Unfollow' : 'Follow');
+        fb.onclick = async () => {
+          const r = await fetch('/api/users/' + encodeURIComponent(pr.username) + '/follow', {
+            method: pr.followed_by_me ? 'DELETE' : 'POST',
+          });
+          if (r.ok) showProfile(pr.username);
+        };
+        head.append(fb);
+      }
+      view.append(head);
+
+      const stats = el('div', undefined, 'stats');
+      stats.append(
+        el('span', pr.post_count + (pr.post_count === 1 ? ' post' : ' posts')),
+        el('span', pr.follower_count + (pr.follower_count === 1 ? ' follower' : ' followers')),
+        el('span', pr.following_count + ' following'),
+      );
+      view.append(stats);
+
+      if (pr.posts.length === 0) {
+        view.append(el('p', 'No posts yet', 'empty'));
+        return;
+      }
+      const grid = el('div', undefined, 'grid');
+      pr.posts.forEach(g => {
+        const img = el('img'); img.src = g.image_url; img.loading = 'lazy';
+        grid.append(img);
+      });
+      view.append(grid);
+    }
+
+    // ---------- composer / auth ----------
     function renderComposer() {
       const box = document.getElementById('composer');
       box.textContent = '';
@@ -109,7 +218,9 @@
         const me = await res.json();
         const out = el('button', 'Log out');
         out.onclick = async () => { await post('/api/logout'); renderAuth(); };
-        box.append(el('span', '@' + me.username), out);
+        const mine = userLink('@' + me.username);
+        mine.href = '#/u/' + encodeURIComponent(me.username);
+        box.append(mine, out);
       } else {
         const u = el('input'); u.placeholder = 'username';
         const p = el('input'); p.placeholder = 'password'; p.type = 'password';
@@ -130,18 +241,27 @@
         box.append(u, p, login, signup, msg);
       }
 
-      loadFeed(); // reload so hearts match who is logged in
+      route(); // re-draw the current page so it matches who is logged in
     }
 
+    // ---------- feed ----------
     async function loadFeed() {
-      const posts = await (await fetch('/api/feed')).json();
+      const url = scope === 'following' ? '/api/feed?scope=following' : '/api/feed';
+      const posts = await (await fetch(url)).json();
       const feed = document.getElementById('feed');
       feed.textContent = '';
+
+      if (posts.length === 0) {
+        feed.append(el('p', scope === 'following'
+          ? 'Nothing here yet. Click a username to visit a profile and follow them.'
+          : 'No posts yet.', 'empty'));
+        return;
+      }
 
       posts.forEach(p => {
         const card = el('div', undefined, 'card');
         const user = el('div', undefined, 'user');
-        user.append(el('div', undefined, 'avatar'), document.createTextNode(p.user));
+        user.append(el('div', undefined, 'avatar'), userLink(p.user));
 
         const img = el('img'); img.src = p.image_url;
 
@@ -152,7 +272,7 @@
 
         const meta = el('div', undefined, 'meta');
         const count = el('b');
-        meta.append(count, el('br'), el('b', p.user), document.createTextNode(' ' + p.caption));
+        meta.append(count, el('br'), userLink(p.user), document.createTextNode(' ' + p.caption));
 
         function paint() {
           heart.textContent = p.liked_by_me ? '♥' : '♡';
@@ -229,6 +349,7 @@
       });
     }
 
+    window.addEventListener('hashchange', route);
     renderAuth();
   </script>
 </body>
