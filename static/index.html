@@ -23,7 +23,12 @@
     .actions { padding: 10px 12px 0; display: flex; align-items: center; gap: 8px; }
     .actions .like { background: none; border: none; font-size: 26px; padding: 0; cursor: pointer; }
     .hint { color: #c00; font-size: 12px; }
-    .meta { padding: 4px 12px 12px; }
+    .meta { padding: 4px 12px 8px; }
+    .linkbtn { background: none; border: none; color: #737373; padding: 0 12px 12px; cursor: pointer; text-align: left; }
+    .comments { padding: 0 12px 12px; font-size: 14px; }
+    .comments .row { margin-bottom: 6px; word-wrap: break-word; }
+    .comments .newcomment { display: flex; gap: 6px; margin-top: 8px; }
+    .comments .newcomment input { flex: 1; padding: 6px; border: 1px solid #dbdbdb; border-radius: 4px; }
   </style>
 </head>
 <body>
@@ -54,6 +59,12 @@
 
     function likesText(n) {
       return n + (n === 1 ? ' like' : ' likes');
+    }
+
+    function commentRow(c) {
+      const row = el('div', undefined, 'row');
+      row.append(el('b', c.user), document.createTextNode(' ' + c.body));
+      return row;
     }
 
     function renderComposer() {
@@ -165,7 +176,55 @@
           }
         };
 
-        card.append(user, img, actions, meta);
+        // ---- comments ----
+        const cbtn = el('button', undefined, 'linkbtn');
+        const cbox = el('div', undefined, 'comments');
+        cbox.hidden = true;
+        let loaded = false;
+
+        function paintComments() {
+          cbtn.textContent = p.comment_count === 0
+            ? 'Add a comment'
+            : 'View comments (' + p.comment_count + ')';
+        }
+        paintComments();
+
+        cbtn.onclick = async () => {
+          if (!cbox.hidden) { cbox.hidden = true; return; }
+          cbox.hidden = false;
+          if (loaded) return;
+          loaded = true;
+
+          const list = el('div');
+          cbox.append(list);
+          const res = await fetch('/api/posts/' + p.id + '/comments');
+          if (res.ok) (await res.json()).forEach(c => list.append(commentRow(c)));
+
+          if (!loggedIn) {
+            cbox.append(el('span', 'Log in to comment', 'hint'));
+            return;
+          }
+          const form = el('div', undefined, 'newcomment');
+          const input = el('input'); input.type = 'text'; input.placeholder = 'Add a comment...';
+          const send = el('button', 'Post');
+          const err = el('span', undefined, 'hint');
+          send.onclick = async () => {
+            const r = await post('/api/posts/' + p.id + '/comments', { body: input.value });
+            if (r.ok) {
+              list.append(commentRow(await r.json()));
+              input.value = '';
+              err.textContent = '';
+              p.comment_count += 1;
+              paintComments();
+            } else if (r.status === 400) err.textContent = 'Comments must be 1-300 characters';
+            else if (r.status === 401) err.textContent = 'Please log in again';
+            else err.textContent = 'Something went wrong';
+          };
+          form.append(input, send);
+          cbox.append(form, err);
+        };
+
+        card.append(user, img, actions, meta, cbtn, cbox);
         feed.append(card);
       });
     }

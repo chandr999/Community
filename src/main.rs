@@ -21,6 +21,19 @@ struct Post {
     caption: String,
     likes: i64,
     liked_by_me: bool,
+    comment_count: i64,
+}
+
+#[derive(Serialize, FromRow)]
+struct Comment {
+    id: i32,
+    user: String,
+    body: String,
+}
+
+#[derive(Deserialize)]
+struct NewComment {
+    body: String,
 }
 
 #[derive(Deserialize)]
@@ -49,7 +62,8 @@ async fn feed(
                p.caption,
                (SELECT COUNT(*) FROM post_likes l WHERE l.post_id = p.id) AS likes,
                EXISTS (SELECT 1 FROM post_likes l
-                       WHERE l.post_id = p.id AND l.user_id = $1) AS liked_by_me
+                       WHERE l.post_id = p.id AND l.user_id = $1) AS liked_by_me,
+               (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count
         FROM posts p
         JOIN users u ON u.id = p.user_id
         ORDER BY p.id DESC
@@ -340,6 +354,70 @@ async fn unlike_post(
     Ok(StatusCode::NO_CONTENT)
 }
 
+async fn list_comments(
+    State(pool): State<PgPool>,
+    Path(post_id): Path<i32>,
+) -> Result<Json<Vec<Comment>>, StatusCode> {
+    let rows = sqlx::query_as::<_, Comment>(
+        r#"
+        SELECT c.id, u.username AS "user", c.body
+        FROM comments c
+        JOIN users u ON u.id = c.user_id
+        WHERE c.post_id = $1
+        ORDER BY c.id ASC
+        LIMIT 200
+        "#,
+    )
+    .bind(post_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("list comments failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(rows))
+}
+
+async fn add_comment(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(post_id): Path<i32>,
+    Json(c): Json<NewComment>,
+) -> Result<(StatusCode, Json<Comment>), StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let body = c.body.trim();
+    if body.is_empty() || body.chars().count() > 300 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let row = sqlx::query_as::<_, Comment>(
+        r#"
+        WITH ins AS (
+            INSERT INTO comments (post_id, user_id, body)
+            VALUES ($1, $2, $3)
+            RETURNING id, user_id, body
+        )
+        SELECT ins.id, u.username AS "user", ins.body
+        FROM ins
+        JOIN users u ON u.id = ins.user_id
+        "#,
+    )
+    .bind(post_id)
+    .bind(user_id)
+    .bind(body)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| match &e {
+        sqlx::Error::Database(db) if db.is_foreign_key_violation() => StatusCode::NOT_FOUND,
+        _ => {
+            eprintln!("add comment failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    })?;
+
+    Ok((StatusCode::CREATED, Json(row)))
+}
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
@@ -362,6 +440,7 @@ async fn main() {
             post(create_post).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
         )
         .route("/api/posts/{id}/like", post(like_post).delete(unlike_post))
+        .route("/api/posts/{id}/comments", get(list_comments).post(add_comment))
         .fallback_service(ServeDir::new("static"))
         .with_state(pool);
 
