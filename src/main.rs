@@ -6,17 +6,26 @@ use axum::{
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     http::{header, HeaderMap, StatusCode},
     response::IntoResponse,
-    routing::{get, post},
+    routing::{get, post, put},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{postgres::PgPoolOptions, FromRow, PgPool};
 use tower_http::services::ServeDir;
 
+const RELATIONSHIP_OPTIONS: [&str; 5] = [
+    "Single",
+    "In a relationship",
+    "Engaged",
+    "Married",
+    "It's complicated",
+];
+
 #[derive(Serialize, FromRow)]
 struct Post {
     id: i32,
     user: String,
+    avatar_url: Option<String>,
     image_url: String,
     caption: String,
     likes: i64,
@@ -37,15 +46,54 @@ struct GridPost {
     image_url: String,
 }
 
+#[derive(FromRow)]
+struct ProfileRow {
+    id: i32,
+    username: String,
+    display_name: Option<String>,
+    bio: Option<String>,
+    age: Option<i32>,
+    location: Option<String>,
+    interests: Option<String>,
+    relationship_status: Option<String>,
+    avatar_url: Option<String>,
+    post_count: i64,
+    follower_count: i64,
+    following_count: i64,
+    followed_by_me: bool,
+}
+
 #[derive(Serialize)]
 struct Profile {
     username: String,
+    display_name: Option<String>,
+    bio: Option<String>,
+    age: Option<i32>,
+    location: Option<String>,
+    interests: Option<String>,
+    relationship_status: Option<String>,
+    avatar_url: Option<String>,
     post_count: i64,
     follower_count: i64,
     following_count: i64,
     followed_by_me: bool,
     is_me: bool,
     posts: Vec<GridPost>,
+}
+
+#[derive(Serialize)]
+struct AvatarInfo {
+    avatar_url: String,
+}
+
+#[derive(Deserialize)]
+struct ProfileUpdate {
+    display_name: Option<String>,
+    bio: Option<String>,
+    age: Option<i32>,
+    location: Option<String>,
+    interests: Option<String>,
+    relationship_status: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -83,6 +131,7 @@ async fn feed(
         r#"
         SELECT p.id,
                u.username AS "user",
+               u.avatar_url,
                p.image_url,
                p.caption,
                (SELECT COUNT(*) FROM post_likes l WHERE l.post_id = p.id) AS likes,
@@ -278,6 +327,37 @@ fn image_extension(b: &[u8]) -> Option<&'static str> {
     }
 }
 
+// Saves an image under a random name and returns its URL (like "/uploads/<id>.jpg").
+// The extension is chosen by us, so uploads can't overwrite each other or sneak in
+// a name like "../something".
+async fn save_image(bytes: &[u8], ext: &str) -> Result<String, StatusCode> {
+    let filename = format!("{}.{}", uuid::Uuid::new_v4(), ext);
+    tokio::fs::create_dir_all("static/uploads").await.map_err(|e| {
+        eprintln!("could not create uploads folder: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    tokio::fs::write(format!("static/uploads/{filename}"), bytes)
+        .await
+        .map_err(|e| {
+            eprintln!("could not save upload: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    Ok(format!("/uploads/{filename}"))
+}
+
+// Deletes an old uploaded file, but only if the URL looks exactly like one we created.
+async fn remove_upload(url: &str) {
+    if let Some(name) = url.strip_prefix("/uploads/") {
+        let safe = !name.is_empty()
+            && !name.contains('/')
+            && !name.contains('\\')
+            && !name.contains("..");
+        if safe {
+            let _ = tokio::fs::remove_file(format!("static/uploads/{name}")).await;
+        }
+    }
+}
+
 async fn create_post(
     State(pool): State<PgPool>,
     headers: HeaderMap,
@@ -313,21 +393,7 @@ async fn create_post(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    // Random file name, extension chosen by us, so uploads can't overwrite each other
-    // or sneak in a name like "../something".
-    let filename = format!("{}.{}", uuid::Uuid::new_v4(), ext);
-    tokio::fs::create_dir_all("static/uploads").await.map_err(|e| {
-        eprintln!("could not create uploads folder: {e}");
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    tokio::fs::write(format!("static/uploads/{filename}"), &bytes)
-        .await
-        .map_err(|e| {
-            eprintln!("could not save upload: {e}");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    let url = format!("/uploads/{filename}");
+    let url = save_image(&bytes, ext).await?;
     sqlx::query("INSERT INTO posts (user_id, image_url, caption) VALUES ($1, $2, $3)")
         .bind(user_id)
         .bind(&url)
@@ -454,15 +520,22 @@ async fn profile(
 ) -> Result<Json<Profile>, StatusCode> {
     let me: Option<i32> = current_user_id(&pool, &headers).await.ok();
 
-    let row: Option<(i32, String, i64, i64, i64, bool)> = sqlx::query_as(
+    let row = sqlx::query_as::<_, ProfileRow>(
         r#"
         SELECT u.id,
                u.username,
-               (SELECT COUNT(*) FROM posts WHERE user_id = u.id),
-               (SELECT COUNT(*) FROM follows WHERE followee_id = u.id),
-               (SELECT COUNT(*) FROM follows WHERE follower_id = u.id),
+               u.display_name,
+               u.bio,
+               u.age,
+               u.location,
+               u.interests,
+               u.relationship_status,
+               u.avatar_url,
+               (SELECT COUNT(*) FROM posts WHERE user_id = u.id) AS post_count,
+               (SELECT COUNT(*) FROM follows WHERE followee_id = u.id) AS follower_count,
+               (SELECT COUNT(*) FROM follows WHERE follower_id = u.id) AS following_count,
                EXISTS (SELECT 1 FROM follows
-                       WHERE follower_id = $2 AND followee_id = u.id)
+                       WHERE follower_id = $2 AND followee_id = u.id) AS followed_by_me
         FROM users u
         WHERE u.username = $1
         "#,
@@ -474,15 +547,13 @@ async fn profile(
     .map_err(|e| {
         eprintln!("profile query failed: {e}");
         StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
-    let (user_id, username, post_count, follower_count, following_count, followed_by_me) =
-        row.ok_or(StatusCode::NOT_FOUND)?;
+    })?
+    .ok_or(StatusCode::NOT_FOUND)?;
 
     let posts = sqlx::query_as::<_, GridPost>(
         "SELECT id, image_url FROM posts WHERE user_id = $1 ORDER BY id DESC LIMIT 60",
     )
-    .bind(user_id)
+    .bind(row.id)
     .fetch_all(&pool)
     .await
     .map_err(|e| {
@@ -491,14 +562,163 @@ async fn profile(
     })?;
 
     Ok(Json(Profile {
-        username,
-        post_count,
-        follower_count,
-        following_count,
-        followed_by_me,
-        is_me: me == Some(user_id),
+        username: row.username,
+        display_name: row.display_name,
+        bio: row.bio,
+        age: row.age,
+        location: row.location,
+        interests: row.interests,
+        relationship_status: row.relationship_status,
+        avatar_url: row.avatar_url,
+        post_count: row.post_count,
+        follower_count: row.follower_count,
+        following_count: row.following_count,
+        followed_by_me: row.followed_by_me,
+        is_me: me == Some(row.id),
         posts,
     }))
+}
+
+// Trims text; empty becomes "not set"; too long is rejected.
+fn clean(opt: Option<String>, max_chars: usize) -> Result<Option<String>, StatusCode> {
+    match opt {
+        None => Ok(None),
+        Some(s) => {
+            let t = s.trim();
+            if t.is_empty() {
+                Ok(None)
+            } else if t.chars().count() > max_chars {
+                Err(StatusCode::BAD_REQUEST)
+            } else {
+                Ok(Some(t.to_string()))
+            }
+        }
+    }
+}
+
+async fn update_profile(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Json(p): Json<ProfileUpdate>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+
+    let display_name = clean(p.display_name, 50)?;
+    let bio = clean(p.bio, 300)?;
+    let location = clean(p.location, 60)?;
+    let interests = clean(p.interests, 200)?;
+    let relationship_status = clean(p.relationship_status, 30)?;
+
+    if let Some(rs) = &relationship_status {
+        if !RELATIONSHIP_OPTIONS.contains(&rs.as_str()) {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
+    if let Some(a) = p.age {
+        if !(13..=120).contains(&a) {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
+
+    sqlx::query(
+        "UPDATE users
+         SET display_name = $1, bio = $2, age = $3, location = $4,
+             interests = $5, relationship_status = $6
+         WHERE id = $7",
+    )
+    .bind(display_name)
+    .bind(bio)
+    .bind(p.age)
+    .bind(location)
+    .bind(interests)
+    .bind(relationship_status)
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("update profile failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn upload_avatar(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    mut multipart: Multipart,
+) -> Result<Json<AvatarInfo>, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+
+    let mut image: Option<(Vec<u8>, &'static str)> = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+    {
+        if field.name() == Some("image") {
+            let bytes = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+            let ext = image_extension(&bytes).ok_or(StatusCode::UNSUPPORTED_MEDIA_TYPE)?;
+            image = Some((bytes.to_vec(), ext));
+        }
+    }
+    let (bytes, ext) = image.ok_or(StatusCode::BAD_REQUEST)?;
+    let url = save_image(&bytes, ext).await?;
+
+    let old: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT avatar_url FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_optional(&pool)
+            .await
+            .map_err(|e| {
+                eprintln!("avatar lookup failed: {e}");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+    sqlx::query("UPDATE users SET avatar_url = $1 WHERE id = $2")
+        .bind(&url)
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| {
+            eprintln!("avatar update failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    if let Some((Some(old_url),)) = old {
+        remove_upload(&old_url).await;
+    }
+    Ok(Json(AvatarInfo { avatar_url: url }))
+}
+
+async fn remove_avatar(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+
+    let old: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT avatar_url FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_optional(&pool)
+            .await
+            .map_err(|e| {
+                eprintln!("avatar lookup failed: {e}");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+    sqlx::query("UPDATE users SET avatar_url = NULL WHERE id = $1")
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| {
+            eprintln!("avatar remove failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    if let Some((Some(old_url),)) = old {
+        remove_upload(&old_url).await;
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn follow_user(
@@ -575,6 +795,13 @@ async fn main() {
         .route("/api/login", post(login))
         .route("/api/me", get(me))
         .route("/api/logout", post(logout))
+        .route("/api/me/profile", put(update_profile))
+        .route(
+            "/api/me/avatar",
+            post(upload_avatar)
+                .delete(remove_avatar)
+                .layer(DefaultBodyLimit::max(5 * 1024 * 1024)),
+        )
         .route(
             "/api/posts",
             post(create_post).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
