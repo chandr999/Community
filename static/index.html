@@ -501,41 +501,6 @@
         <div id="feed"></div>
       </section>
       <aside class="home-aside" aria-label="Community check-in map">
-        <section class="map-section">
-          <div class="map-heading">
-            <div>
-              <h2>Love-d around you</h2>
-              <p>Find restaurants, pubs, hotels, concerts and more. Click the map to choose a check-in spot.</p>
-            </div>
-            <div class="map-live-controls">
-              <button id="shareLocationButton" class="map-live-toggle" type="button" hidden>Share my live location</button>
-              <span id="locationSharingStatus" class="map-live-status" role="status">Live locations only appear when a member chooses to share.</span>
-            </div>
-          </div>
-          <p class="map-privacy-note">Live location sharing is off until you turn it on and grant browser permission. While enabled, your precise location is visible to all signed-in members. Stop sharing anytime; locations expire if updates stop.</p>
-          <div id="mapCategoryFilters" class="map-category-filters" aria-label="Filter check-in categories"></div>
-          <div id="checkinMap" role="application" aria-label="Map of check-ins and members sharing live location"></div>
-          <p id="mapUnavailable" class="map-unavailable" hidden>The map tiles could not be loaded. Check your connection and try refreshing.</p>
-          <p class="map-attribution">Map tiles © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>. Map requests reveal the viewed map area to the tile provider.</p>
-          <form id="checkinForm" class="map-checkin-form" hidden>
-            <strong>Check in at this map location</strong>
-            <p id="checkinCoordinates" class="map-checkin-coordinates">Choose a point on the map.</p>
-            <label>Category
-              <select id="checkinCategory" required></select>
-            </label>
-            <label>Place or event
-              <input id="checkinPlace" type="text" maxlength="100" placeholder="Restaurant, hotel or event name" required>
-            </label>
-            <label>Note (optional)
-              <textarea id="checkinNote" maxlength="240" placeholder="Who/what are you enjoying?"></textarea>
-            </label>
-            <button id="checkinSubmit" class="map-checkin-submit" type="submit" disabled>Check in</button>
-            <span id="checkinFeedback" class="map-checkin-feedback" role="status"></span>
-          </form>
-          <p id="checkinLoginHint" class="map-privacy-note" hidden>Sign in to check in or share your live location.</p>
-          <div id="checkinFeed" class="map-checkin-list" aria-live="polite"></div>
-          <button id="checkinMore" class="checkin-more" type="button" hidden>Show more check-ins</button>
-        </section>
         <section id="activityPanel" class="activity-panel" aria-label="Your activity" hidden>
           <h2 class="activity-heading">Your little corner</h2>
           <div class="activity-group">
@@ -2099,9 +2064,9 @@
         login.onclick = () => submit('/api/login');
         box.append(u, p, login, signup, msg);
       }
-      document.getElementById('checkinForm').hidden = !loggedIn || !selectedMapPoint;
+      const mapForm = document.getElementById('checkinForm'); if (mapForm) { mapForm.hidden = !loggedIn || !selectedMapPoint;
       document.getElementById('checkinLoginHint').hidden = loggedIn;
-      document.getElementById('shareLocationButton').hidden = !loggedIn;
+      document.getElementById('shareLocationButton').hidden = !loggedIn; }
       startPresenceTracking();
       route(); // re-draw the current page so it matches who is logged in
     }
@@ -2914,6 +2879,7 @@
     }
 
     function initCommunityMap() {
+      if (!document.getElementById('checkinMap')) return;
       const mapElement = document.getElementById('checkinMap');
       const unavailable = document.getElementById('mapUnavailable');
       const categoryList = document.getElementById('mapCategoryFilters');
