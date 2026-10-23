@@ -3,3 +3,5 @@
 .env
 static/uploads/
 /private_uploads/
+backup-*.sql
+backup-*.sql

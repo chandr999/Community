@@ -516,6 +516,22 @@
 .share-opt { padding: 9px 12px; border: 1px solid #e3deee; border-radius: 10px; background: white; color: inherit; font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
 .share-opt:hover { background: #f4f1fb; }
 .share-close { text-align: center; color: #625e70; }
+.fb-fab { position: fixed; right: 16px; bottom: 16px; z-index: 9000; padding: 10px 16px; border: 0; border-radius: 999px; background: var(--violet); color: white; font: inherit; font-size: 13px; box-shadow: 0 6px 18px #34235d40; cursor: pointer; }
+.fb-fab:hover { filter: brightness(1.1); }
+.fb-overlay { position: fixed; inset: 0; z-index: 9997; display: grid; place-items: center; padding: 12px; background: rgba(20,16,32,.55); }
+.fb-card { display: grid; gap: 10px; width: min(420px, 100%); padding: 16px; border-radius: 18px; background: white; color: #1f1b2e; box-sizing: border-box; }
+.fb-title { margin: 0; font-size: 16px; }
+.fb-cats { display: flex; flex-wrap: wrap; gap: 6px; }
+.fb-cat { padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: white; font: inherit; font-size: 12px; cursor: pointer; }
+.fb-cat.on { border-color: var(--violet); background: #efeafc; }
+.fb-text { width: 100%; min-height: 120px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; font: inherit; resize: vertical; box-sizing: border-box; }
+.fb-meta { display: flex; justify-content: space-between; gap: 8px; color: #625e70; font-size: 11px; }
+.fb-status { min-height: 1em; margin: 0; font-size: 12px; }
+.fb-row { display: flex; justify-content: flex-end; gap: 8px; }
+.fb-btn { padding: 8px 16px; border: 1px solid var(--line); border-radius: 999px; background: white; font: inherit; font-size: 13px; cursor: pointer; }
+.fb-btn.primary { border-color: var(--violet); background: var(--violet); color: white; }
+.fb-fab.in-nav { position: static; right: auto; bottom: auto; z-index: auto; margin-left: 10px; padding: 7px 16px; vertical-align: middle; background: #ff4d1f; color: white; font-size: 13px; font-weight: 800; letter-spacing: .02em; white-space: nowrap; box-shadow: 0 0 0 2px #fff, 0 4px 14px #ff4d1f66; }
+.fb-fab.in-nav:hover { background: #e63e12; filter: none; transform: translateY(-1px); }
 </style>
 </head>
 <body>
@@ -3935,6 +3951,89 @@
   window.addEventListener('hashchange', openFromHash);
   openFromHash();
   window.addEventListener('hashchange', refreshTray);
+})();
+</script>
+<script>
+(function () {
+  const h = (tag, cls, text) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  };
+  const fab = h('button', 'fb-fab', 'Feedback');
+  fab.type = 'button';
+  fab.setAttribute('aria-label', 'Send feedback');
+  const topNav = document.querySelector('.top-nav');
+  if (topNav) { fab.classList.add('in-nav'); topNav.append(fab); } else { document.body.append(fab); }
+
+  fab.onclick = () => {
+    const loggedIn = typeof currentUsername === 'string' && currentUsername;
+    if (!loggedIn) { alert('Log in to send feedback.'); return; }
+    const cats = [['bug', 'Bug'], ['idea', 'Idea'], ['praise', 'Praise'], ['other', 'Other']];
+    let category = 'idea';
+    const ov = h('div', 'fb-overlay');
+    const card = h('div', 'fb-card');
+    ov.append(card);
+
+    const catRow = h('div', 'fb-cats');
+    const catBtns = cats.map(([key, label]) => {
+      const b = h('button', 'fb-cat' + (key === category ? ' on' : ''), label);
+      b.type = 'button';
+      b.onclick = () => { category = key; catBtns.forEach(o => o.classList.toggle('on', o === b)); };
+      return b;
+    });
+    catRow.append(...catBtns);
+
+    const ta = h('textarea', 'fb-text');
+    ta.maxLength = 1000;
+    ta.placeholder = 'What happened, or what would you like to see? The more specific, the better.';
+    const count = h('span', null, '0 / 1000');
+    ta.oninput = () => { count.textContent = ta.value.length + ' / 1000'; };
+    const meta = h('div', 'fb-meta');
+    meta.append(h('span', null, 'We record the page you are on and your browser type.'), count);
+
+    const status = h('p', 'fb-status');
+    const row = h('div', 'fb-row');
+    const cancel = h('button', 'fb-btn', 'Cancel');
+    const send = h('button', 'fb-btn primary', 'Send');
+    cancel.type = send.type = 'button';
+    row.append(cancel, send);
+
+    const close = () => { document.removeEventListener('keydown', onKey); ov.remove(); };
+    const onKey = e => { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', onKey);
+    cancel.onclick = close;
+    ov.onclick = e => { if (e.target === ov) close(); };
+
+    send.onclick = async () => {
+      const message = ta.value.trim();
+      status.style.color = '#b4423f';
+      if (message.length < 3) { status.textContent = 'Please write a little more.'; return; }
+      send.disabled = true;
+      status.textContent = '';
+      try {
+        const res = await fetch('/api/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category, message, page: location.hash || '#/' }),
+        });
+        if (res.status === 401) throw new Error('Please log in again.');
+        if (res.status === 429) throw new Error('That is a lot of feedback. Please try again in a while.');
+        if (!res.ok) throw new Error('Could not send (' + res.status + ').');
+        status.style.color = '#347e72';
+        status.textContent = 'Thank you! Your feedback was sent.';
+        setTimeout(close, 1300);
+      } catch (e) {
+        status.textContent = e.message;
+        send.disabled = false;
+      }
+    };
+
+    card.append(h('h3', 'fb-title', 'Send feedback'), catRow, ta, meta, status, row);
+    document.body.append(ov);
+    ta.focus();
+  };
 })();
 </script>
 </body>
