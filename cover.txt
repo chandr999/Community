@@ -1,0 +1,40 @@
+20: body { margin: 0; color: var(--ink); background: radial-gradient(ellipse at 8% 5%, #edf4eb 0, transparent 34%), radial-gradient(ellipse at 94% 28%, #f4ede2 
+23: .logo-mark { width: 31px; height: 31px; border-radius: 11px; display: grid; place-items: center; color: white; font-size: 17px; background: linear-gradient(
+50: .avatar { width: 34px; height: 34px; border-radius: 50%; background: #ded9ea; flex: none; object-fit: cover; display: block; }
+56: .hero { min-height: 278px; position: relative; isolation: isolate; overflow: hidden; display: flex; align-items: center; margin-bottom: 34px; padding: 35px 
+60: .hero-cover { position: absolute; z-index: -1; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+61: .hero.has-cover { background: #28233b; border-color: #28233b; }
+62: .hero.has-cover::before { inset: 0; z-index: 0; width: auto; height: auto; border-radius: 0; background: linear-gradient(90deg, #201c2ee8 0%, #201c2eae 48%,
+63: .hero.has-cover::after { display: none; }
+64: .hero.has-cover .eyebrow, .hero.has-cover h1, .hero.has-cover .hero-copy p { color: white; }
+65: .hero.has-cover h1 em { color: #e2d6ff; }
+76: .hero-cover-actions { position: absolute; z-index: 2; top: 14px; right: 15px; display: grid; justify-items: end; gap: 8px; max-width: min(460px, calc(100% -
+77: .hero-cover-actions[hidden] { display: none; }
+78: .hero-cover-buttons { display: flex; align-items: center; gap: 7px; }
+79: .hero-cover-actions button { padding: 7px 10px; border-color: #ffffffa8; background: #ffffffdf; color: #302b40; font-size: 10px; }
+80: .hero-cover-actions .cover-remove { color: #7d3e4c; }
+81: .hero-cover-feedback { color: var(--muted); font-size: 10px; }
+82: .hero.has-cover .hero-cover-feedback { color: white; text-shadow: 0 1px 5px #0008; }
+83: .cover-editor { display: flex; flex-wrap: wrap; align-items: center; gap: 15px; width: 100%; padding: 10px 12px; border: 1px solid #ffffffb3; border-radius:
+84: .cover-editor .cover-save-close { width: auto; min-height: 29px; flex: none; padding-inline: 10px; color: white; background: var(--violet); border-color: va
+85: .cover-editor[hidden] { display: none; }
+86: .cover-direction-controls { display: grid; grid-template-columns: repeat(3, 32px); grid-template-rows: repeat(3, 29px); gap: 2px; }
+87: .cover-editor button { display: grid; width: 32px; min-height: 29px; place-items: center; padding: 0; border-radius: 7px; font-size: 16px; line-height: 1; }
+88: .cover-editor button:hover { background: #f0ebff; }
+89: .cover-move-up { grid-column: 2; grid-row: 1; }
+90: .cover-move-left { grid-column: 1; grid-row: 2; }
+91: .cover-move-right { grid-column: 3; grid-row: 2; }
+92: .cover-move-down { grid-column: 2; grid-row: 3; }
+93: .cover-zoom-controls { display: flex; align-items: center; gap: 8px; }
+94: .cover-zoom-value { min-width: 42px; color: #514d60; font-size: 11px; text-align: center; }
+95: .cover-editor-hint { flex: 1; color: var(--muted); font-size: 10px; }
+130: @media (max-width: 560px) { .hero-cover-actions { top: 10px; right: 10px; max-width: calc(100% - 20px); } .cover-editor { gap: 8px; padding: 7px; } .cover-
+165: .card img.photo { width: 100%; max-height: 620px; display: block; object-fit: cover; background: #f0edf5; }
+200: .idea:nth-child(1) .idea-swatch { background: linear-gradient(145deg, #d1c3ff, #8e9cf3 55%, #5b78a7); }
+201: .idea:nth-child(2) .idea-swatch { background: linear-gradient(145deg, #ffbd9e, #f58e90 55%, #a26fbd); }
+202: .idea:nth-child(3) .idea-swatch { background: linear-gradient(145deg, #e7a4bd, #b5669b 55%, #705486); }
+203: .idea:nth-child(4) .idea-swatch { background: linear-gradient(145deg, #e7ce9a, #a5bb9a 55%, #6f9789); }
+204: .idea:nth-child(5) .idea-swatch { background: linear-gradient(145deg, #d7a88f, #966c96 55%, #4c648c); }
+205: .idea:nth-child(6) .idea-swatch { background: linear-gradient(145deg, #f1cf7e, #dc8c65 55%, #96537f); }
+206: .idea:nth-child(7) .idea-swatch { background: linear-gradient(145deg, #a8d4d0, #76a8b7 55%, #617aab); }
+207: .idea:nth-child(8) .idea-swatch { background: linear-gradient(145deg, #f3c9a3, #e59775 55%, #b85770); }

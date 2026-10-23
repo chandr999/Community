@@ -1,0 +1,149 @@
+---- posts table ----
+                                          Table "public.posts"
+      Column      |           Type           | Collation | Nullable |              Default              
+------------------+--------------------------+-----------+----------+-----------------------------------
+ id               | integer                  |           | not null | nextval('posts_id_seq'::regclass)
+ user_id          | integer                  |           | not null | 
+ image_url        | text                     |           | not null | 
+ caption          | text                     |           | not null | ''::text
+ created_at       | timestamp with time zone |           | not null | now()
+ reshared_from_id | integer                  |           |          | 
+ media_type       | text                     |           | not null | 'image'::text
+Indexes:
+    "posts_pkey" PRIMARY KEY, btree (id)
+    "posts_one_reshare_per_user_idx" UNIQUE, btree (user_id, reshared_from_id) WHERE reshared_from_id IS NOT NULL
+    "posts_reshared_from_idx" btree (reshared_from_id)
+Check constraints:
+    "posts_media_type_check" CHECK (media_type = ANY (ARRAY['image'::text, 'video'::text]))
+Foreign-key constraints:
+    "posts_reshared_from_id_fkey" FOREIGN KEY (reshared_from_id) REFERENCES posts(id) ON DELETE CASCADE
+    "posts_user_id_fkey" FOREIGN KEY (user_id) REFERENCES users(id)
+Referenced by:
+    TABLE "activity_notifications" CONSTRAINT "activity_notifications_post_id_fkey" FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    TABLE "comments" CONSTRAINT "comments_post_id_fkey" FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    TABLE "post_dislikes" CONSTRAINT "post_dislikes_post_id_fkey" FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    TABLE "post_hates" CONSTRAINT "post_hates_post_id_fkey" FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    TABLE "post_likes" CONSTRAINT "post_likes_post_id_fkey" FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    TABLE "post_reports" CONSTRAINT "post_reports_post_id_fkey" FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    TABLE "post_tags" CONSTRAINT "post_tags_post_id_fkey" FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    TABLE "posts" CONSTRAINT "posts_reshared_from_id_fkey" FOREIGN KEY (reshared_from_id) REFERENCES posts(id) ON DELETE CASCADE
+
+---- main.rs: posts and uploads ----
+7: extract::{DefaultBodyLimit, Multipart, Path, Query, State},
+15: use tower_http::services::ServeDir;
+41: media_type: String,
+42: caption: String,
+165: media_type: String,
+464: p.media_type,
+465: p.caption,
+1314: // Saves an image under a random name and returns its URL (like "/uploads/<id>.jpg").
+1315: // The extension is chosen by us, so uploads can't overwrite each other or sneak in
+1319: tokio::fs::create_dir_all("static/uploads")
+1322: eprintln!("could not create uploads folder: {e}");
+1325: tokio::fs::write(format!("static/uploads/{filename}"), bytes)
+1331: Ok(format!("/uploads/{filename}"))
+1336: tokio::fs::create_dir_all("private_uploads")
+1339: eprintln!("could not create private uploads folder: {e}");
+1342: tokio::fs::write(format!("private_uploads/{filename}"), bytes)
+1353: if let Some(name) = url.strip_prefix("/uploads/") {
+1357: let _ = tokio::fs::remove_file(format!("static/uploads/{name}")).await;
+1368: let _ = tokio::fs::remove_file(format!("private_uploads/{filename}")).await;
+1372: async fn create_post(
+1375: mut multipart: Multipart,
+1391: let mut caption = String::new();
+1395: while let Some(field) = multipart
+1402: Some("caption") => {
+1403: caption = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+1415: return Err(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+1426: let (bytes, ext, media_type) = media.ok_or(StatusCode::BAD_REQUEST)?;
+1427: let caption = caption.trim();
+1428: if caption.len() > 500 {
+1452: "INSERT INTO posts (user_id, image_url, media_type, caption)
+1457: .bind(media_type)
+1458: .bind(caption)
+1674: INSERT INTO posts (user_id, image_url, caption, media_type, reshared_from_id)
+1675: SELECT $1, source.image_url, source.caption, source.media_type,
+1948: "SELECT id, image_url, media_type
+2185: COALESCE(c.body, p.caption) AS detail,
+2885: mut multipart: Multipart,
+2943: while let Some(field) = multipart
+2956: image_extension(&bytes).ok_or(StatusCode::UNSUPPORTED_MEDIA_TYPE)?;
+3034: let bytes = tokio::fs::read(format!("private_uploads/{path}"))
+---- index.html: composer and posts ----
+138: #composer { display: flex; flex-direction: column; gap: 10px; margin: 0 0 18px; padding: 17px; background: white; border: 1px solid var(--line); border-rad
+139: #composer:empty { display: none; }
+140: #composer input[type=text] { width: 100%; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; font: inherit; }
+141: #composer button { align-self: flex-start; padding-inline: 18px; color: white; background: var(--violet); border-color: var(--violet); }
+142: #composer input[type=file] { max-width: 100%; color: var(--muted); font: inherit; font-size: 12px; }
+256: .new-conversation input, .message-composer input[type=text] { width: 100%; min-width: 0; padding: 10px 11px; border: 1px solid var(--line); border-radius: 
+282: .message-composer { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
+283: .message-composer input[type=text] { flex: 1; }
+284: .message-composer input[type=file] { width: 175px; min-width: 0; color: var(--muted); font-size: 10px; }
+285: .message-composer button { color: white; background: var(--violet); border-color: var(--violet); }
+426: .message-composer { flex-wrap: wrap; }
+427: .message-composer input[type=file] { width: 145px; }
+514: <div id="composer"></div>
+1921: const photos = pr.posts.filter(item => item.media_type !== 'video');
+1922: const videos = pr.posts.filter(item => item.media_type === 'video');
+2009: // ---------- composer / auth ----------
+2010: function renderComposer() {
+2011: const box = document.getElementById('composer');
+2019: const cap = el('input'); cap.type = 'text'; cap.placeholder = 'Caption';
+2020: const tags = el('input'); tags.type = 'text'; tags.placeholder = 'Tag people (usernames, comma-separated; up to 10)';
+2027: fd.append('caption', cap.value);
+2037: else if (r.status === 400) msg.textContent = 'Check the photo/video, caption length, and tagged usernames (up to 10 existing users)';
+2049: renderComposer();
+2285: const messageForm = el('form', undefined, 'message-composer');
+2593: if (p.media_type === 'video') {
+2643: meta.append(userLink(p.user), document.createTextNode(' ' + p.caption));
+---- index.html: cover ----
+20: body { margin: 0; color: var(--ink); background: radial-gradient(ellipse at 8% 5%, #edf4eb 0, transparent 34%), radial-gradient(ellipse at 94% 28%, #f4ede2 
+23: .logo-mark { width: 31px; height: 31px; border-radius: 11px; display: grid; place-items: center; color: white; font-size: 17px; background: linear-gradient(
+50: .avatar { width: 34px; height: 34px; border-radius: 50%; background: #ded9ea; flex: none; object-fit: cover; display: block; }
+56: .hero { min-height: 278px; position: relative; isolation: isolate; overflow: hidden; display: flex; align-items: center; margin-bottom: 34px; padding: 35px 
+60: .hero-cover { position: absolute; z-index: -1; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+61: .hero.has-cover { background: #28233b; border-color: #28233b; }
+62: .hero.has-cover::before { inset: 0; z-index: 0; width: auto; height: auto; border-radius: 0; background: linear-gradient(90deg, #201c2ee8 0%, #201c2eae 48%,
+63: .hero.has-cover::after { display: none; }
+64: .hero.has-cover .eyebrow, .hero.has-cover h1, .hero.has-cover .hero-copy p { color: white; }
+65: .hero.has-cover h1 em { color: #e2d6ff; }
+76: .hero-cover-actions { position: absolute; z-index: 2; top: 14px; right: 15px; display: grid; justify-items: end; gap: 8px; max-width: min(460px, calc(100% -
+77: .hero-cover-actions[hidden] { display: none; }
+78: .hero-cover-buttons { display: flex; align-items: center; gap: 7px; }
+79: .hero-cover-actions button { padding: 7px 10px; border-color: #ffffffa8; background: #ffffffdf; color: #302b40; font-size: 10px; }
+80: .hero-cover-actions .cover-remove { color: #7d3e4c; }
+81: .hero-cover-feedback { color: var(--muted); font-size: 10px; }
+82: .hero.has-cover .hero-cover-feedback { color: white; text-shadow: 0 1px 5px #0008; }
+83: .cover-editor { display: flex; flex-wrap: wrap; align-items: center; gap: 15px; width: 100%; padding: 10px 12px; border: 1px solid #ffffffb3; border-radius:
+84: .cover-editor .cover-save-close { width: auto; min-height: 29px; flex: none; padding-inline: 10px; color: white; background: var(--violet); border-color: va
+85: .cover-editor[hidden] { display: none; }
+86: .cover-direction-controls { display: grid; grid-template-columns: repeat(3, 32px); grid-template-rows: repeat(3, 29px); gap: 2px; }
+87: .cover-editor button { display: grid; width: 32px; min-height: 29px; place-items: center; padding: 0; border-radius: 7px; font-size: 16px; line-height: 1; }
+88: .cover-editor button:hover { background: #f0ebff; }
+89: .cover-move-up { grid-column: 2; grid-row: 1; }
+90: .cover-move-left { grid-column: 1; grid-row: 2; }
+91: .cover-move-right { grid-column: 3; grid-row: 2; }
+92: .cover-move-down { grid-column: 2; grid-row: 3; }
+93: .cover-zoom-controls { display: flex; align-items: center; gap: 8px; }
+94: .cover-zoom-value { min-width: 42px; color: #514d60; font-size: 11px; text-align: center; }
+95: .cover-editor-hint { flex: 1; color: var(--muted); font-size: 10px; }
+130: @media (max-width: 560px) { .hero-cover-actions { top: 10px; right: 10px; max-width: calc(100% - 20px); } .cover-editor { gap: 8px; padding: 7px; } .cover-
+165: .card img.photo { width: 100%; max-height: 620px; display: block; object-fit: cover; background: #f0edf5; }
+200: .idea:nth-child(1) .idea-swatch { background: linear-gradient(145deg, #d1c3ff, #8e9cf3 55%, #5b78a7); }
+201: .idea:nth-child(2) .idea-swatch { background: linear-gradient(145deg, #ffbd9e, #f58e90 55%, #a26fbd); }
+202: .idea:nth-child(3) .idea-swatch { background: linear-gradient(145deg, #e7a4bd, #b5669b 55%, #705486); }
+203: .idea:nth-child(4) .idea-swatch { background: linear-gradient(145deg, #e7ce9a, #a5bb9a 55%, #6f9789); }
+204: .idea:nth-child(5) .idea-swatch { background: linear-gradient(145deg, #d7a88f, #966c96 55%, #4c648c); }
+205: .idea:nth-child(6) .idea-swatch { background: linear-gradient(145deg, #f1cf7e, #dc8c65 55%, #96537f); }
+206: .idea:nth-child(7) .idea-swatch { background: linear-gradient(145deg, #a8d4d0, #76a8b7 55%, #617aab); }
+207: .idea:nth-child(8) .idea-swatch { background: linear-gradient(145deg, #f3c9a3, #e59775 55%, #b85770); }
+208: .idea:nth-child(9) .idea-swatch { background: linear-gradient(145deg, #b2d6a2, #77a88f 55%, #527c8a); }
+243: .activity-thumb { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; flex: none; }
+328: .grid img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: #eee; border-radius: 12px; }
+333: .gallery-grid video { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: #17151d; border-radius: 12px; }
+465: <a href="#/">Discover</a>
+475: <img id="heroCoverImage" class="hero-cover" alt="" hidden>
+476: <div id="heroCoverActions" class="hero-cover-actions" hidden>
+477: <input id="heroCoverFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+478: <div class="hero-cover-buttons">
+479: <button id="heroCoverChoose" type="button">Set background image</button>

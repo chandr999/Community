@@ -1,0 +1,9 @@
+& {
+  "---- posts table ----"
+  docker exec insta-db psql -U postgres -d insta -c "\d posts"
+  "---- main.rs ----"
+  Select-String -Path src\main.rs -Pattern "create_post|Multipart|ServeDir|uploads|media_type|caption" | ForEach-Object { $s = "$($_.LineNumber): $($_.Line.Trim())"; $s.Substring(0, [Math]::Min(160, $s.Length)) } | Select-Object -First 40
+  "---- index.html ----"
+  Select-String -Path static\index.html -Pattern "Tag people|Caption|composer|media_type|function render.*Post" | ForEach-Object { $s = "$($_.LineNumber): $($_.Line.Trim())"; $s.Substring(0, [Math]::Min(160, $s.Length)) } | Select-Object -First 40
+} | Set-Content context.txt
+code context.txt

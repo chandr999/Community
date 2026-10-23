@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Love-d — local roots, global connections</title>
+  <title>Community — local roots, global connections</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <style>
     :root {
@@ -442,11 +442,25 @@
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
     }
-  </style>
+  .news-group { margin-bottom: 12px; }
+.news-subhead { margin: 0 0 6px; font-size: 12px; font-weight: 700; color: var(--violet); }
+.news-item { display: block; margin-bottom: 7px; font-size: 12px; line-height: 1.35; color: inherit; text-decoration: none; }
+.news-item:hover { text-decoration: underline; }
+.news-source { display: block; font-size: 10px; color: var(--muted); }
+.news-note { margin: 0; font-size: 11px; color: var(--muted); }
+.fun-text { margin: 0 0 8px; font-size: 12px; line-height: 1.45; }
+.fun-next { padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; background: white; color: var(--violet); font: inherit; font-size: 11px; cursor: pointer; }
+.fun-next:hover { background: #f4f1fb; }
+.dark-quote { margin-top: 14px; padding: 14px; border-radius: 14px; background: #1f1b2e; color: #e8e4f5; }
+.dark-quote-head { margin: 0 0 8px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #a79bd6; }
+.dark-quote-text { margin: 0 0 10px; font-size: 13px; line-height: 1.45; font-style: italic; }
+.dark-next { background: transparent; border-color: #4a4266; color: #cfc6f2; }
+.dark-next:hover { background: #2a2540; }
+</style>
 </head>
 <body>
   <header>
-    <a class="logo" href="#/" aria-label="Love-d home"><span class="logo-mark" aria-hidden="true">✳</span>Love-d</a>
+    <a class="logo" href="#/" aria-label="Community home"><span class="logo-mark" aria-hidden="true">✳</span>Community</a>
     <nav class="top-nav" aria-label="Main navigation">
       <a href="#/">Discover</a>
       <a href="#feed">Community</a>
@@ -512,6 +526,20 @@
             <div id="profileVisitors" class="activity-list"></div>
           </div>
         </section>
+      <section id="newsPanel" class="activity-panel" aria-label="Top stories">
+  <h2 class="activity-heading">Top stories</h2>
+  <div id="newsBody"><p class="news-note">Loading headlines...</p></div>
+</section>
+      <section id="funPanel" class="activity-panel" aria-label="Fun facts and quotes">
+  <h2 class="activity-heading">Fun fact</h2>
+  <p id="funFactText" class="fun-text"></p>
+  <button id="funFactNext" class="fun-next" type="button">Another one</button>
+  <div class="dark-quote">
+    <h3 class="dark-quote-head">Dark quote</h3>
+    <p id="darkQuoteText" class="dark-quote-text"></p>
+    <button id="darkQuoteNext" class="fun-next dark-next" type="button">Next quote</button>
+  </div>
+</section>
       </aside>
     </main>
   </div>
@@ -878,12 +906,12 @@
       const view = document.getElementById('signupView');
       view.hidden = false;
       view.replaceChildren();
-      const back = el('a', '← Back to Love-d', 'signup-back');
+      const back = el('a', '← Back to Community', 'signup-back');
       back.href = '#/';
       const card = el('section', undefined, 'signup-card');
       card.append(
         el('h1', 'Create your account'),
-        el('p', 'Join Love-d and start connecting with your community.'),
+        el('p', 'Join Community and start connecting with your community.'),
       );
       const form = el('form', undefined, 'signup-form');
       const addField = (labelText, name, type, options = {}) => {
@@ -1061,7 +1089,7 @@
       if (!loggedIn) {
         const card = el('section', undefined, 'settings-card');
         card.append(el('p', 'Log in to manage your account settings.'));
-        const home = el('a', 'Back to Love-d');
+        const home = el('a', 'Back to Community');
         home.href = '#/';
         card.append(home);
         view.append(card);
@@ -1084,7 +1112,7 @@
       const privacyCard = el('section', undefined, 'settings-card');
       privacyCard.append(
         el('h2', 'Privacy & visibility'),
-        el('p', 'Control how your Love-d profile and availability appear to other people.'),
+        el('p', 'Control how your Community profile and availability appear to other people.'),
       );
       const addSelect = (parent, name, labelText, helpText, choices) => {
         const row = el('div', undefined, 'setting-row');
@@ -1284,7 +1312,7 @@
       const heading = el('header', undefined, 'user-search-heading');
       heading.append(
         el('h1', 'Find people'),
-        el('p', 'Search Love-d usernames and open a profile to learn more.'),
+        el('p', 'Search Community usernames and open a profile to learn more.'),
       );
       view.append(heading);
 
@@ -3296,5 +3324,90 @@
     initCommunityMap();
     renderAuth();
   </script>
+<script>
+(async function loadNews() {
+  const body = document.getElementById('newsBody');
+  if (!body) return;
+  const groups = [['local', 'India'], ['world', 'World'], ['tech', 'Tech']];
+  try {
+    const res = await fetch('/api/news');
+    if (!res.ok) throw new Error('news ' + res.status);
+    const data = await res.json();
+    body.replaceChildren();
+    for (const [key, label] of groups) {
+      const items = (data[key] || []).slice(0, 3);
+      if (!items.length) continue;
+      const box = document.createElement('div');
+      box.className = 'news-group';
+      const h = document.createElement('h3');
+      h.className = 'news-subhead';
+      h.textContent = label;
+      box.append(h);
+      for (const it of items) {
+        if (!/^https?:\/\//.test(it.link || '')) continue;
+        const a = document.createElement('a');
+        a.className = 'news-item';
+        a.href = it.link;
+        a.target = '_blank';
+        a.rel = 'noreferrer noopener';
+        a.textContent = it.title;
+        if (it.source) {
+          const s = document.createElement('span');
+          s.className = 'news-source';
+          s.textContent = it.source;
+          a.append(s);
+        }
+        box.append(a);
+      }
+      body.append(box);
+    }
+    if (!body.children.length) throw new Error('empty');
+  } catch (e) {
+    body.replaceChildren();
+    const p = document.createElement('p');
+    p.className = 'news-note';
+    p.textContent = 'Headlines are unavailable right now.';
+    body.append(p);
+  }
+})();
+</script>
+<script>
+(function () {
+  const facts = [
+    "Honey found in ancient Egyptian tombs was still edible after thousands of years.",
+    "Octopuses have three hearts and blue blood.",
+    "A day on Venus is longer than a year on Venus.",
+    "Bananas are botanically berries, but strawberries are not.",
+    "Wombats produce cube-shaped droppings.",
+    "Sharks have been around longer than trees have.",
+    "Oxford University is older than the Aztec Empire.",
+    "The Eiffel Tower can grow about 15 cm taller in hot summer weather.",
+    "Crows can recognize individual human faces and remember them.",
+    "Chess is believed to have originated in India, from a game called chaturanga.",
+    "Lightning is about five times hotter than the surface of the Sun.",
+    "A group of flamingos is called a flamboyance."
+  ];
+  const quotes = [
+    "The night does not hide the stars. It only asks you to look harder.",
+    "Some storms do not come to destroy you. They come to clear the path.",
+    "Shadows only exist because something is shining.",
+    "Silence can be loud when the mind is full.",
+    "Even the darkest room is changed by one small light.",
+    "Not every ghost is dead. Some are memories that stayed.",
+    "Walk through the dark long enough and your eyes learn to see.",
+    "The moon has a darker side too, and nobody calls it less."
+  ];
+  const f = document.getElementById('funFactText');
+  const q = document.getElementById('darkQuoteText');
+  if (!f || !q) return;
+  const day = Math.floor(Date.now() / 86400000);
+  let fi = day % facts.length;
+  let qi = (day * 3 + 1) % quotes.length;
+  const show = () => { f.textContent = facts[fi]; q.textContent = quotes[qi]; };
+  document.getElementById('funFactNext').onclick = () => { fi = (fi + 1) % facts.length; show(); };
+  document.getElementById('darkQuoteNext').onclick = () => { qi = (qi + 1) % quotes.length; show(); };
+  show();
+})();
+</script>
 </body>
 </html>

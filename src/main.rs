@@ -3691,6 +3691,7 @@ async fn main() {
         .route("/api/me/activity", get(my_activity))
         .route("/api/me/dashboard", get(settings_dashboard))
         .route("/api/checkins", get(list_checkins).post(create_checkin))
+        .route("/api/news", get(get_news))
         .route("/api/checkins/{id}", delete(delete_checkin))
         .route("/api/locations/live", get(list_live_locations))
         .route(
@@ -3867,4 +3868,92 @@ mod tests {
             Err(StatusCode::BAD_REQUEST)
         );
     }
+}
+
+// ---------- top stories (Google News RSS, cached 15 minutes) ----------
+#[derive(serde::Serialize, Clone)]
+struct NewsItem {
+    title: String,
+    link: String,
+    source: String,
+}
+
+#[derive(serde::Serialize, Clone)]
+struct NewsPayload {
+    local: Vec<NewsItem>,
+    world: Vec<NewsItem>,
+    tech: Vec<NewsItem>,
+}
+
+static NEWS_CACHE: std::sync::OnceLock<tokio::sync::Mutex<Option<(std::time::Instant, NewsPayload)>>> =
+    std::sync::OnceLock::new();
+
+const NEWS_TTL: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+const NEWS_LOCAL: &str = "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en";
+const NEWS_WORLD: &str = "https://news.google.com/rss/headlines/section/topic/WORLD?hl=en-IN&gl=IN&ceid=IN:en";
+const NEWS_TECH: &str = "https://news.google.com/rss/headlines/section/topic/TECHNOLOGY?hl=en-IN&gl=IN&ceid=IN:en";
+
+async fn fetch_feed(client: &reqwest::Client, url: &str) -> Vec<NewsItem> {
+    let text = match client.get(url).send().await.and_then(|r| r.error_for_status()) {
+        Ok(resp) => match resp.text().await {
+            Ok(t) => t,
+            Err(_) => return Vec::new(),
+        },
+        Err(_) => return Vec::new(),
+    };
+    let doc = match roxmltree::Document::parse(&text) {
+        Ok(d) => d,
+        Err(_) => return Vec::new(),
+    };
+    doc.descendants()
+        .filter(|n| n.has_tag_name("item"))
+        .take(3)
+        .filter_map(|item| {
+            let get = |name: &str| {
+                item.children()
+                    .find(|c| c.has_tag_name(name))
+                    .and_then(|c| c.text())
+                    .map(|s| s.trim().to_string())
+            };
+            let full_title = get("title")?;
+            let link = get("link")?;
+            let source = get("source").unwrap_or_default();
+            // Google News titles end with " - Source Name"
+            let title = match full_title.rsplit_once(" - ") {
+                Some((t, _)) if !source.is_empty() => t.to_string(),
+                _ => full_title,
+            };
+            Some(NewsItem { title, link, source })
+        })
+        .collect()
+}
+
+async fn get_news() -> Result<axum::Json<NewsPayload>, axum::http::StatusCode> {
+    let cache = NEWS_CACHE.get_or_init(|| tokio::sync::Mutex::new(None));
+    let mut guard = cache.lock().await;
+    if let Some((at, data)) = guard.as_ref() {
+        if at.elapsed() < NEWS_TTL {
+            return Ok(axum::Json(data.clone()));
+        }
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .user_agent("Community/1.0")
+        .build()
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
+    let (local, world, tech) = tokio::join!(
+        fetch_feed(&client, NEWS_LOCAL),
+        fetch_feed(&client, NEWS_WORLD),
+        fetch_feed(&client, NEWS_TECH),
+    );
+    let payload = NewsPayload { local, world, tech };
+    if payload.local.is_empty() && payload.world.is_empty() && payload.tech.is_empty() {
+        // all three failed: serve the last good copy if we have one
+        if let Some((_, data)) = guard.as_ref() {
+            return Ok(axum::Json(data.clone()));
+        }
+        return Err(axum::http::StatusCode::BAD_GATEWAY);
+    }
+    *guard = Some((std::time::Instant::now(), payload.clone()));
+    Ok(axum::Json(payload))
 }
