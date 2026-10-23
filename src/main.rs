@@ -3670,6 +3670,12 @@ async fn main() {
         .connect(&database_url)
         .await
         .expect("could not connect to the database (is Docker running?)");
+    if std::env::var("RUN_MIGRATIONS").map(|v| v == "1").unwrap_or(false) {
+        sqlx::migrate!("./migrations")
+            .run(&pool)
+            .await
+            .expect("database migrations failed");
+    }
     ensure_user_settings_schema(&pool)
         .await
         .expect("user settings schema could not be initialized");
@@ -3693,6 +3699,7 @@ async fn main() {
         .route("/api/checkins", get(list_checkins).post(create_checkin))
         .route("/api/news", get(get_news))
         .route("/api/checkins/{id}", delete(delete_checkin))
+        .route("/api/feedback", axum::routing::post(submit_feedback))
         .route("/api/stories", get(story_tray).post(create_story))
         .route("/api/stories/{id}", delete(delete_story))
         .route("/api/stories/{id}/view", axum::routing::post(view_story))
@@ -3790,7 +3797,7 @@ async fn main() {
         .fallback_service(ServeDir::new("static"))
         .with_state(pool);
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
+    let listener = tokio::net::TcpListener::bind(std::env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".to_string()))
         .await
         .unwrap();
     println!("Running on http://localhost:3000");
@@ -4347,4 +4354,65 @@ async fn delete_story(
             Ok(StatusCode::NO_CONTENT)
         }
     }
+}
+// ---------- tester feedback ----------
+#[derive(serde::Deserialize)]
+struct NewFeedback {
+    category: String,
+    message: String,
+    page: Option<String>,
+}
+
+async fn submit_feedback(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Json(f): Json<NewFeedback>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let message = f.message.trim();
+    let len = message.chars().count();
+    if len < 3 || len > 1000 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if !["bug", "idea", "praise", "other"].contains(&f.category.as_str()) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let recent: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM feedback
+         WHERE user_id = $1 AND created_at > now() - interval '1 hour'",
+    )
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("feedback rate check failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    if recent >= 5 {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    }
+    let page: String = f.page.unwrap_or_default().chars().take(120).collect();
+    let ua: String = headers
+        .get(axum::http::header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .chars()
+        .take(200)
+        .collect();
+    sqlx::query(
+        "INSERT INTO feedback (user_id, category, message, page, user_agent)
+         VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(user_id)
+    .bind(&f.category)
+    .bind(message)
+    .bind(&page)
+    .bind(&ua)
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("feedback insert failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(StatusCode::CREATED)
 }

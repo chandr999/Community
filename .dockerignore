@@ -1,0 +1,7 @@
+target
+.git
+.env
+.env.*
+private_uploads
+static/uploads
+backup-*.sql
