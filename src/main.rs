@@ -3693,6 +3693,12 @@ async fn main() {
         .route("/api/checkins", get(list_checkins).post(create_checkin))
         .route("/api/news", get(get_news))
         .route("/api/checkins/{id}", delete(delete_checkin))
+        .route("/api/stories", get(story_tray).post(create_story))
+        .route("/api/stories/{id}", delete(delete_story))
+        .route("/api/stories/{id}/view", axum::routing::post(view_story))
+        .route("/api/users/{username}/stories", get(user_stories))
+        .route("/api/posts/{id}", delete(delete_post))
+        .route("/api/posts/{id}/comments/{comment_id}", delete(delete_comment))
         .route("/api/locations/live", get(list_live_locations))
         .route(
             "/api/me/location",
@@ -3956,4 +3962,389 @@ async fn get_news() -> Result<axum::Json<NewsPayload>, axum::http::StatusCode> {
     }
     *guard = Some((std::time::Instant::now(), payload.clone()));
     Ok(axum::Json(payload))
+}
+// ---------- delete a post / delete a comment ----------
+async fn delete_post(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(post_id): Path<i32>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let result = sqlx::query("DELETE FROM posts WHERE id = $1 AND user_id = $2")
+        .bind(post_id)
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| {
+            eprintln!("post delete failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn delete_comment(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path((post_id, comment_id)): Path<(i32, i32)>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    // the comment's author or the post's owner may delete it
+    let result = sqlx::query(
+        "DELETE FROM comments AS c USING posts AS p
+         WHERE c.id = $1 AND c.post_id = $2 AND p.id = c.post_id
+           AND (c.user_id = $3 OR p.user_id = $3)",
+    )
+    .bind(comment_id)
+    .bind(post_id)
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("comment delete failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+// ---------- stories (24-hour text / image / video posts) ----------
+const STORY_MOODS: [&str; 11] = [
+    "Bored", "Romantic", "Angry", "Sad", "Happy", "Calm",
+    "Excited", "Playful", "Lonely", "Grateful", "Stressed",
+];
+
+#[derive(serde::Serialize, sqlx::FromRow)]
+struct StoryTrayItem {
+    username: String,
+    avatar_url: Option<String>,
+    story_count: i64,
+    all_seen: bool,
+    thumb_kind: String,
+    thumb_url: Option<String>,
+    thumb_bg: String,
+    thumb_body: String,
+}
+
+#[derive(serde::Serialize, sqlx::FromRow)]
+struct StoryItem {
+    id: i32,
+    kind: String,
+    body: String,
+    media_url: Option<String>,
+    bg_color: String,
+    mood: Option<String>,
+    created_at: String,
+    viewed: bool,
+    view_count: i64,
+}
+
+async fn purge_expired_stories(pool: &PgPool) {
+    let rows: Vec<(Option<String>,)> = sqlx::query_as(
+        "DELETE FROM stories WHERE expires_at <= now() - interval '1 hour' RETURNING media_url",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    for (url,) in rows {
+        if let Some(u) = url {
+            remove_upload(&u).await;
+        }
+    }
+}
+
+async fn create_story(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    mut multipart: Multipart,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let account_enabled: bool =
+        sqlx::query_scalar("SELECT account_enabled FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| {
+                eprintln!("story account status lookup failed: {e}");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+    if !account_enabled {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    let mut body = String::new();
+    let mut mood: Option<String> = None;
+    let mut bg = String::from("#6a54c6");
+    let mut media: Option<(Vec<u8>, &'static str, &'static str)> = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+    {
+        let name = field.name().map(|s| s.to_string());
+        match name.as_deref() {
+            Some("body") => {
+                body = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+            }
+            Some("mood") => {
+                let m = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+                let m = m.trim().to_string();
+                if !m.is_empty() {
+                    mood = Some(m);
+                }
+            }
+            Some("bg_color") => {
+                bg = field
+                    .text()
+                    .await
+                    .map_err(|_| StatusCode::BAD_REQUEST)?
+                    .trim()
+                    .to_string();
+            }
+            Some("media") => {
+                let bytes = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+                if bytes.is_empty() {
+                    continue;
+                }
+                if bytes.len() > 25 * 1024 * 1024 {
+                    return Err(StatusCode::PAYLOAD_TOO_LARGE);
+                }
+                let uploaded = if let Some(ext) = image_extension(&bytes) {
+                    (bytes.to_vec(), ext, "image")
+                } else if let Some(ext) = video_extension(&bytes) {
+                    (bytes.to_vec(), ext, "video")
+                } else {
+                    return Err(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+                };
+                media = Some(uploaded);
+            }
+            _ => {}
+        }
+    }
+
+    let body = body.trim();
+    if body.chars().count() > 280 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if media.is_none() && body.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if let Some(m) = &mood {
+        if !STORY_MOODS.contains(&m.as_str()) {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
+    let bg_ok = bg.len() == 7
+        && bg.starts_with('#')
+        && bg[1..].chars().all(|c| c.is_ascii_hexdigit());
+    if !bg_ok {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    purge_expired_stories(&pool).await;
+
+    let (kind, url): (&str, Option<String>) = match media {
+        Some((bytes, ext, media_type)) => {
+            let saved = save_image(&bytes, ext).await?;
+            (media_type, Some(saved))
+        }
+        None => ("text", None),
+    };
+
+    let result = sqlx::query(
+        "INSERT INTO stories (user_id, kind, body, media_url, bg_color, mood)
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(user_id)
+    .bind(kind)
+    .bind(body)
+    .bind(&url)
+    .bind(&bg)
+    .bind(&mood)
+    .execute(&pool)
+    .await;
+    if let Err(e) = result {
+        if let Some(u) = &url {
+            remove_upload(u).await;
+        }
+        eprintln!("create story failed: {e}");
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+    Ok(StatusCode::CREATED)
+}
+
+async fn story_tray(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<StoryTrayItem>>, StatusCode> {
+    let me = current_user_id(&pool, &headers).await?;
+    let rows = sqlx::query_as::<_, StoryTrayItem>(
+        r#"
+        SELECT u.username,
+               u.avatar_url,
+               COUNT(s.id) AS story_count,
+               COALESCE(BOOL_AND(v.story_id IS NOT NULL), false) AS all_seen,
+               (ARRAY_AGG(s.kind ORDER BY s.created_at DESC))[1] AS thumb_kind,
+               (ARRAY_AGG(s.media_url ORDER BY s.created_at DESC))[1] AS thumb_url,
+               (ARRAY_AGG(s.bg_color ORDER BY s.created_at DESC))[1] AS thumb_bg,
+               (ARRAY_AGG(s.body ORDER BY s.created_at DESC))[1] AS thumb_body
+        FROM stories s
+        JOIN users u ON u.id = s.user_id
+        LEFT JOIN story_views v ON v.story_id = s.id AND v.viewer_id = $1
+        WHERE s.expires_at > now()
+          AND (s.user_id = $1
+               OR s.user_id IN (SELECT followee_id FROM follows WHERE follower_id = $1)
+               OR (s.user_id IN (SELECT follower_id FROM follows WHERE followee_id = $1)
+                   AND u.profile_visibility = 'public'))
+          AND NOT EXISTS (
+              SELECT 1 FROM user_blocks b
+              WHERE b.blocker_id = s.user_id AND b.blocked_id = $1)
+        GROUP BY u.id, u.username, u.avatar_url
+        ORDER BY (u.id = $1) DESC, all_seen ASC, MAX(s.created_at) DESC
+        LIMIT 50
+        "#,
+    )
+    .bind(me)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("story tray failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(rows))
+}
+
+async fn user_stories(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+) -> Result<Json<Vec<StoryItem>>, StatusCode> {
+    let me = current_user_id(&pool, &headers).await?;
+    let target: Option<(i32, String)> =
+        sqlx::query_as("SELECT id, profile_visibility FROM users WHERE username = $1")
+            .bind(&username)
+            .fetch_optional(&pool)
+            .await
+            .map_err(|e| {
+                eprintln!("story user lookup failed: {e}");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+    let (target_id, visibility) = target.ok_or(StatusCode::NOT_FOUND)?;
+
+    if target_id != me {
+        let blocked: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2)",
+        )
+        .bind(target_id)
+        .bind(me)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| {
+            eprintln!("story block check failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+        if blocked {
+            return Err(StatusCode::NOT_FOUND);
+        }
+        if visibility != "public" {
+            let follows: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM follows WHERE follower_id = $1 AND followee_id = $2)",
+            )
+            .bind(me)
+            .bind(target_id)
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| {
+                eprintln!("story follow check failed: {e}");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+            if !follows {
+                return Err(StatusCode::FORBIDDEN);
+            }
+        }
+    }
+
+    let rows = sqlx::query_as::<_, StoryItem>(
+        r#"
+        SELECT s.id, s.kind, s.body, s.media_url, s.bg_color, s.mood,
+               to_char(s.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
+               EXISTS(SELECT 1 FROM story_views v WHERE v.story_id = s.id AND v.viewer_id = $1) AS viewed,
+               CASE WHEN s.user_id = $1
+                    THEN (SELECT COUNT(*) FROM story_views v2 WHERE v2.story_id = s.id)
+                    ELSE 0::bigint END AS view_count
+        FROM stories s
+        WHERE s.user_id = $2 AND s.expires_at > now()
+        ORDER BY s.created_at ASC
+        LIMIT 30
+        "#,
+    )
+    .bind(me)
+    .bind(target_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("list stories failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(rows))
+}
+
+async fn view_story(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(story_id): Path<i32>,
+) -> Result<StatusCode, StatusCode> {
+    let me = current_user_id(&pool, &headers).await?;
+    sqlx::query(
+        "INSERT INTO story_views (story_id, viewer_id)
+         SELECT s.id, $2 FROM stories s JOIN users u ON u.id = s.user_id
+         WHERE s.id = $1 AND s.expires_at > now() AND s.user_id <> $2
+           AND NOT EXISTS (SELECT 1 FROM user_blocks b
+                           WHERE b.blocker_id = s.user_id AND b.blocked_id = $2)
+           AND (u.profile_visibility = 'public'
+                OR EXISTS (SELECT 1 FROM follows f
+                           WHERE f.follower_id = $2 AND f.followee_id = s.user_id))
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(story_id)
+    .bind(me)
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("story view failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn delete_story(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(story_id): Path<i32>,
+) -> Result<StatusCode, StatusCode> {
+    let me = current_user_id(&pool, &headers).await?;
+    let deleted: Option<(Option<String>,)> = sqlx::query_as(
+        "DELETE FROM stories WHERE id = $1 AND user_id = $2 RETURNING media_url",
+    )
+    .bind(story_id)
+    .bind(me)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("story delete failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    match deleted {
+        None => Err(StatusCode::NOT_FOUND),
+        Some((url,)) => {
+            if let Some(u) = url {
+                remove_upload(&u).await;
+            }
+            Ok(StatusCode::NO_CONTENT)
+        }
+    }
 }

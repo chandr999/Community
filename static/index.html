@@ -456,6 +456,66 @@
 .dark-quote-text { margin: 0 0 10px; font-size: 13px; line-height: 1.45; font-style: italic; }
 .dark-next { background: transparent; border-color: #4a4266; color: #cfc6f2; }
 .dark-next:hover { background: #2a2540; }
+.post-delete-button { margin-left: auto; padding: 4px 10px; border: 1px solid #e3c4c4; border-radius: 999px; background: transparent; color: #b4423f; font: inherit; font-size: 11px; cursor: pointer; }
+.post-delete-button:hover { background: #fbeeee; }
+.comment-delete-button { margin-left: 6px; padding: 0 6px; border: 0; background: transparent; color: #b4423f; font: inherit; font-size: 11px; cursor: pointer; opacity: .6; }
+.comment-delete-button:hover { opacity: 1; }
+.story-tray { display: flex; gap: 12px; overflow-x: auto; padding: 4px 2px 10px; margin-bottom: 10px; }
+.story-bubble { display: grid; justify-items: center; gap: 4px; min-width: 64px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.story-name { max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.story-ring { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 50%; background: linear-gradient(135deg, #6a54c6, #c2547a, #d98b2b); }
+.story-ring.seen { background: #cfcbd8; }
+.story-ring .avatar { width: 52px; height: 52px; border: 2px solid white; box-sizing: border-box; }
+.story-add-plus { display: grid; place-items: center; width: 58px; height: 58px; border: 2px dashed var(--violet); border-radius: 50%; color: var(--violet); font-size: 22px; box-sizing: border-box; }
+.sv-overlay { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; background: rgba(10,8,18,.92); }
+.sv-card { position: relative; width: min(420px, 100vw); height: min(760px, 100vh); overflow: hidden; border-radius: 16px; background: #000; color: white; }
+.sv-body { position: absolute; inset: 0; display: grid; place-items: center; cursor: pointer; }
+.sv-body img, .sv-body video { width: 100%; height: 100%; object-fit: contain; }
+.sv-text { padding: 28px; text-align: center; font-size: 24px; font-weight: 600; line-height: 1.35; word-break: break-word; }
+.sv-caption { position: absolute; left: 0; right: 0; bottom: 0; padding: 40px 16px 52px; background: linear-gradient(transparent, rgba(0,0,0,.7)); text-align: center; font-size: 14px; word-break: break-word; }
+.sv-bars { position: absolute; top: 0; left: 0; right: 0; z-index: 3; display: flex; gap: 4px; padding: 10px 10px 6px; }
+.sv-bar { flex: 1; height: 3px; overflow: hidden; border-radius: 2px; background: rgba(255,255,255,.3); }
+.sv-fill { width: 0; height: 100%; background: white; }
+.sv-head { position: absolute; top: 24px; left: 10px; right: 10px; z-index: 3; display: flex; align-items: center; gap: 8px; font-size: 13px; text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+.sv-head .avatar { width: 32px; height: 32px; }
+.sv-mood { padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,.2); font-size: 11px; }
+.sv-foot { position: absolute; left: 12px; right: 12px; bottom: 10px; z-index: 3; display: flex; align-items: center; justify-content: space-between; font-size: 12px; }
+.sv-btn { padding: 4px 10px; border: 0; border-radius: 999px; background: rgba(255,255,255,.18); color: white; font: inherit; cursor: pointer; }
+.sc-overlay { position: fixed; inset: 0; z-index: 9998; display: grid; place-items: center; padding: 12px; background: rgba(20,16,32,.55); }
+.sc-card { display: grid; gap: 10px; width: min(440px, 100%); max-height: 92vh; overflow: auto; padding: 16px; border-radius: 18px; background: white; box-sizing: border-box; }
+.sc-title { margin: 0; font-size: 16px; }
+.sc-tabs { display: flex; gap: 6px; }
+.sc-tab { flex: 1; padding: 7px; border: 1px solid var(--line); border-radius: 10px; background: white; font: inherit; font-size: 12px; cursor: pointer; }
+.sc-tab.on { border-color: var(--violet); background: var(--violet); color: white; }
+.sc-text { width: 100%; min-height: 120px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; font: inherit; resize: vertical; box-sizing: border-box; }
+.sc-text.colored { border: 0; color: white; font-size: 18px; font-weight: 600; text-align: center; }
+.sc-text.colored::placeholder { color: rgba(255,255,255,.7); }
+.sc-count { color: var(--muted); font-size: 10px; text-align: right; }
+.sc-swatches, .sc-moods { display: flex; flex-wrap: wrap; gap: 6px; }
+.sc-swatch { width: 24px; height: 24px; padding: 0; border: 2px solid transparent; border-radius: 50%; cursor: pointer; }
+.sc-swatch.on { border-color: #1f1b2e; }
+.sc-mood { padding: 4px 9px; border: 1px solid var(--line); border-radius: 999px; background: white; font: inherit; font-size: 11px; cursor: pointer; }
+.sc-mood.on { border-color: var(--violet); background: #efeafc; }
+.sc-preview img, .sc-preview video { width: 100%; max-height: 240px; border-radius: 10px; background: #000; object-fit: contain; }
+.sc-row { display: flex; justify-content: flex-end; gap: 8px; }
+.sc-btn { padding: 8px 16px; border: 1px solid var(--line); border-radius: 999px; background: white; font: inherit; font-size: 13px; cursor: pointer; }
+.sc-btn.primary { border-color: var(--violet); background: var(--violet); color: white; }
+.sc-err { min-height: 1em; margin: 0; color: #b4423f; font-size: 12px; }
+.story-tray { scroll-snap-type: x proximity; scroll-behavior: smooth; scrollbar-width: thin; }
+.story-bubble { scroll-snap-align: start; flex: none; }
+.story-bubble.story-card { min-width: 84px; }
+.story-card .story-name { max-width: 84px; }
+.story-thumb { position: relative; display: block; width: 84px; height: 120px; overflow: hidden; border: 3px solid #c2547a; border-radius: 14px; background: #1f1b2e; box-sizing: border-box; }
+.story-thumb.seen { border-color: #cfcbd8; }
+.story-thumb img, .story-thumb video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.story-thumb-text { display: grid; place-items: center; width: 100%; height: 100%; padding: 6px; overflow: hidden; color: white; font-size: 11px; font-weight: 600; line-height: 1.25; text-align: center; word-break: break-word; box-sizing: border-box; }
+.story-thumb .avatar { position: absolute; left: 5px; top: 5px; width: 26px; height: 26px; border: 2px solid white; box-sizing: border-box; }
+.share-overlay { position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; padding: 12px; background: rgba(10,8,18,.6); }
+.share-box { display: grid; gap: 8px; width: min(340px, 100%); padding: 16px; border-radius: 16px; background: white; color: #1f1b2e; box-sizing: border-box; }
+.share-note { margin: 0; color: #625e70; font-size: 11px; line-height: 1.4; }
+.share-opt { padding: 9px 12px; border: 1px solid #e3deee; border-radius: 10px; background: white; color: inherit; font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.share-opt:hover { background: #f4f1fb; }
+.share-close { text-align: center; color: #625e70; }
 </style>
 </head>
 <body>
@@ -511,6 +571,7 @@
           </div>
           <div id="tabs"></div>
         </div>
+        <div id="storyTray" class="story-tray" hidden></div>
         <div id="composer"></div>
         <div id="feed"></div>
       </section>
@@ -808,9 +869,29 @@
       };
     }
 
-    function commentRow(c) {
+    function commentRow(c, p, onDeleted) {
       const row = el('div', undefined, 'row');
       row.append(userLink(c.user), document.createTextNode(' ' + c.body));
+      if (p && c.id != null && currentUsername && (c.user === currentUsername || p.user === currentUsername)) {
+        const del = el('button', '✕', 'comment-delete-button');
+        del.type = 'button';
+        del.title = 'Delete comment';
+        del.setAttribute('aria-label', 'Delete comment');
+        del.onclick = async () => {
+          if (!confirm('Delete this comment?')) return;
+          del.disabled = true;
+          try {
+            const response = await fetch('/api/posts/' + p.id + '/comments/' + c.id, { method: 'DELETE' });
+            if (!response.ok) throw new Error('status ' + response.status);
+            row.remove();
+            if (typeof onDeleted === 'function') onDeleted();
+          } catch (error) {
+            console.error('Could not delete comment:', error);
+            del.disabled = false;
+          }
+        };
+        row.append(del);
+      }
       return row;
     }
 
@@ -2485,17 +2566,32 @@
                 });
                 if (!response.ok) throw new Error('Follow request failed: ' + response.status);
                 p.followed_by_me = !p.followed_by_me;
+                window.followSync(p.user, p.followed_by_me);
                 followButton.textContent = p.followed_by_me ? 'Unfollow' : 'Follow';
                 followButton.setAttribute('aria-pressed', String(p.followed_by_me));
                 followStatus.textContent = p.followed_by_me ? 'Following @' + p.user : 'Unfollowed @' + p.user;
               } catch (error) {
                 console.error('Could not update follow status:', error);
-                followStatus.textContent = 'Follow status could not be updated. Please try again.';
+                followStatus.textContent = 'Follow could not be updated (' + error.message + ').';
               } finally {
                 followButton.disabled = false;
               }
             };
             userControls.append(followButton, followStatus);
+            window.followRegistry = window.followRegistry || {};
+            window.followSync = window.followSync || ((user, state) => {
+              const list = (window.followRegistry[user] || []).filter(x => x.btn.isConnected);
+              window.followRegistry[user] = list;
+              list.forEach(x => x.fn(state));
+            });
+            (window.followRegistry[p.user] = window.followRegistry[p.user] || []).push({
+              btn: followButton,
+              fn: state => {
+                p.followed_by_me = state;
+                followButton.textContent = state ? 'Unfollow' : 'Follow';
+                followButton.setAttribute('aria-pressed', String(state));
+              },
+            });
 
             const favoriteButton = el('button', p.favorited_by_me ? 'Remove from favorites' : 'Add to favorites');
             favoriteButton.type = 'button';
@@ -2798,7 +2894,7 @@
           const list = el('div');
           cbox.append(list);
           const res = await fetch('/api/posts/' + p.id + '/comments');
-          if (res.ok) (await res.json()).forEach(c => list.append(commentRow(c)));
+          if (res.ok) (await res.json()).forEach(c => list.append(commentRow(c, p, () => { p.comment_count = Math.max(0, p.comment_count - 1); paintComments(); })));
 
           if (!loggedIn) {
             cbox.append(el('span', 'Log in to comment', 'hint'));
@@ -2811,7 +2907,7 @@
           send.onclick = async () => {
             const r = await post('/api/posts/' + p.id + '/comments', { body: input.value });
             if (r.ok) {
-              list.append(commentRow(await r.json()));
+              list.append(commentRow(await r.json(), p, () => { p.comment_count = Math.max(0, p.comment_count - 1); paintComments(); }));
               input.value = '';
               err.textContent = '';
               p.comment_count += 1;
@@ -2825,7 +2921,26 @@
           cbox.append(form, err);
         };
 
-        card.append(user, mediaStage, actions, meta, cbtn, cbox);
+        if (p.user === currentUsername) {
+            const deleteButton = el('button', 'Delete', 'post-delete-button');
+            deleteButton.type = 'button';
+            deleteButton.setAttribute('aria-label', 'Delete this post');
+            deleteButton.onclick = async () => {
+              if (!confirm('Delete this post? This cannot be undone.')) return;
+              deleteButton.disabled = true;
+              try {
+                const response = await fetch('/api/posts/' + p.id, { method: 'DELETE' });
+                if (!response.ok) throw new Error('status ' + response.status);
+                card.remove();
+              } catch (error) {
+                console.error('Could not delete post:', error);
+                deleteButton.disabled = false;
+                deleteButton.textContent = 'Delete failed - retry';
+              }
+            };
+            actions.append(deleteButton);
+          }
+          card.append(user, mediaStage, actions, meta, cbtn, cbox);
         feed.append(card);
       });
     }
@@ -3407,6 +3522,420 @@
   document.getElementById('funFactNext').onclick = () => { fi = (fi + 1) % facts.length; show(); };
   document.getElementById('darkQuoteNext').onclick = () => { qi = (qi + 1) % quotes.length; show(); };
   show();
+})();
+</script>
+<script>
+(function () {
+  const MOODS = ['Bored', 'Romantic', 'Angry', 'Sad', 'Happy', 'Calm', 'Excited', 'Playful', 'Lonely', 'Grateful', 'Stressed'];
+  const COLORS = ['#6a54c6', '#347e72', '#c2547a', '#d98b2b', '#2f6fb0', '#1f1b2e'];
+  const tray = document.getElementById('storyTray');
+  if (!tray) return;
+  const me = () => (typeof currentUsername === 'string' ? currentUsername : null);
+  const h = (tag, cls, text) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  };
+  const moodEmoji = m => (typeof moodIcon === 'function' ? moodIcon(m) : '') || '';
+  const avatarNode = url => {
+    if (typeof avatarEl === 'function') return avatarEl(url);
+    const d = h('div', 'avatar');
+    return d;
+  };
+  const ago = iso => {
+    const mins = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + 'm';
+    return Math.floor(mins / 60) + 'h';
+  };
+
+  function thumbNode(it) {
+    if (it.thumb_kind === 'image' && it.thumb_url) {
+      const im = document.createElement('img');
+      im.src = it.thumb_url; im.alt = ''; im.loading = 'lazy';
+      return im;
+    }
+    if (it.thumb_kind === 'video' && it.thumb_url) {
+      const v = document.createElement('video');
+      v.src = it.thumb_url + '#t=0.1'; v.muted = true; v.preload = 'metadata'; v.playsInline = true;
+      return v;
+    }
+    const d = h('span', 'story-thumb-text', it.thumb_body || '');
+    d.style.background = it.thumb_bg || '#6a54c6';
+    return d;
+  }
+
+  async function refreshTray() {
+    try {
+      const res = await fetch('/api/stories');
+      if (!res.ok) { tray.hidden = true; return; }
+      const items = await res.json();
+      tray.replaceChildren();
+      tray.hidden = false;
+      const add = h('button', 'story-bubble');
+      add.type = 'button';
+      add.append(h('span', 'story-add-plus', '+'), h('span', 'story-name', 'Your story'));
+      add.onclick = openCreator;
+      tray.append(add);
+      items.forEach(it => {
+        const b = h('button', 'story-bubble');
+        b.type = 'button';
+        b.classList.add('story-card');
+        const ring = h('span', 'story-thumb' + (it.all_seen ? ' seen' : ''));
+        ring.append(thumbNode(it));
+        ring.append(avatarNode(it.avatar_url));
+        b.append(ring, h('span', 'story-name', it.username === me() ? 'You' : it.username));
+        b.onclick = () => openViewer(it.username, it.avatar_url);
+        tray.append(b);
+      });
+    } catch (e) {
+      tray.hidden = true;
+    }
+  }
+  window.refreshStoryTray = refreshTray;
+  window.openStories = openViewer;
+
+  function openShare(username, onClose) {
+    const link = location.origin + '/#/story/' + encodeURIComponent(username);
+    const text = '@' + username + ' shared a story on Community';
+    const ov = h('div', 'share-overlay');
+    const box = h('div', 'share-box');
+    ov.append(box);
+    const close = () => { ov.remove(); if (onClose) onClose(); };
+    ov.onclick = e => { if (e.target === ov) close(); };
+    box.append(h('h3', 'sc-title', 'Share this story'));
+    box.append(h('p', 'share-note', 'Anyone opening the link needs a Community account, and sees the story only if its owner allows it.'));
+    const addOpt = (label, fn) => {
+      const b = h('button', 'share-opt', label);
+      b.type = 'button';
+      b.onclick = () => fn(b);
+      box.append(b);
+    };
+    if (navigator.share) {
+      addOpt('Share via your device...', async () => {
+        try { await navigator.share({ title: 'Community story', text: text, url: link }); } catch (e) {}
+        close();
+      });
+    }
+    addOpt('Copy link', async b => {
+      try { await navigator.clipboard.writeText(link); b.textContent = 'Link copied'; }
+      catch (e) { window.prompt('Copy this link:', link); }
+    });
+    const enc = encodeURIComponent;
+    [
+      ['WhatsApp', 'https://wa.me/?text=' + enc(text + ' ' + link)],
+      ['Telegram', 'https://t.me/share/url?url=' + enc(link) + '&text=' + enc(text)],
+      ['X (Twitter)', 'https://twitter.com/intent/tweet?text=' + enc(text) + '&url=' + enc(link)],
+      ['Facebook', 'https://www.facebook.com/sharer/sharer.php?u=' + enc(link)],
+      ['Email', 'mailto:?subject=' + enc('A story on Community') + '&body=' + enc(text + ' ' + link)],
+    ].forEach(([label, url]) => addOpt(label, () => {
+      if (url.indexOf('mailto:') === 0) location.href = url;
+      else window.open(url, '_blank', 'noopener');
+    }));
+    const done = h('button', 'share-opt share-close', 'Close');
+    done.type = 'button';
+    done.onclick = close;
+    box.append(done);
+    document.body.append(ov);
+  }
+
+  async function openViewer(username, avatarUrl) {
+    let stories;
+    try {
+      const res = await fetch('/api/users/' + encodeURIComponent(username) + '/stories');
+      if (res.status === 401) { alert('Log in to view this story.'); return; }
+      if (res.status === 403) { alert('Follow this person to see their stories.'); return; }
+      if (!res.ok) throw new Error('status ' + res.status);
+      stories = await res.json();
+    } catch (e) {
+      alert('Could not load stories.');
+      return;
+    }
+    if (!stories.length) { alert('No active stories right now.'); return; }
+
+    const isMine = username === me();
+    const ov = h('div', 'sv-overlay');
+    const card = h('div', 'sv-card');
+    const body = h('div', 'sv-body');
+    const bars = h('div', 'sv-bars');
+    const head = h('div', 'sv-head');
+    const foot = h('div', 'sv-foot');
+    card.append(body, bars, head, foot);
+    ov.append(card);
+    document.body.append(ov);
+    document.body.style.overflow = 'hidden';
+
+    let i = Math.max(0, stories.findIndex(s => !s.viewed));
+    let timer = null;
+
+    function close() {
+      clearTimeout(timer);
+      document.removeEventListener('keydown', onKey);
+      ov.remove();
+      document.body.style.overflow = '';
+      refreshTray();
+    }
+    function next() { if (i < stories.length - 1) show(i + 1); else close(); }
+    function prev() { show(Math.max(0, i - 1)); }
+    function onKey(e) {
+      if (e.key === 'Escape') close();
+      else if (e.key === 'ArrowRight') next();
+      else if (e.key === 'ArrowLeft') prev();
+    }
+    document.addEventListener('keydown', onKey);
+    ov.onclick = e => { if (e.target === ov) close(); };
+    body.onclick = e => {
+      const r = body.getBoundingClientRect();
+      if (e.clientX - r.left < r.width * 0.3) prev(); else next();
+    };
+
+    function show(idx) {
+      i = idx;
+      clearTimeout(timer);
+      body.replaceChildren();
+      bars.replaceChildren();
+      head.replaceChildren();
+      foot.replaceChildren();
+      const s = stories[i];
+
+      const fills = stories.map((_, k) => {
+        const b = h('div', 'sv-bar');
+        const f = h('div', 'sv-fill');
+        if (k < i) f.style.width = '100%';
+        b.append(f);
+        bars.append(b);
+        return f;
+      });
+
+      head.append(avatarNode(avatarUrl), h('strong', null, username), h('span', null, ago(s.created_at)));
+      if (s.mood) head.append(h('span', 'sv-mood', (moodEmoji(s.mood) + ' ' + s.mood).trim()));
+      const shareBtn = h('button', 'sv-btn', 'Share');
+      shareBtn.type = 'button';
+      shareBtn.style.marginLeft = 'auto';
+      shareBtn.onclick = e => {
+        e.stopPropagation();
+        clearTimeout(timer);
+        if (video) video.pause();
+        openShare(username, () => show(i));
+      };
+      head.append(shareBtn);
+      const x = h('button', 'sv-btn', 'Close');
+      x.type = 'button';
+      x.style.marginLeft = '8px';
+      x.onclick = e => { e.stopPropagation(); close(); };
+      head.append(x);
+
+      let video = null;
+      if (s.kind === 'text') {
+        body.style.background = s.bg_color;
+        body.append(h('div', 'sv-text', s.body));
+      } else if (s.kind === 'image') {
+        body.style.background = '#000';
+        const img = document.createElement('img');
+        img.src = s.media_url;
+        img.alt = '';
+        body.append(img);
+        if (s.body) body.append(h('div', 'sv-caption', s.body));
+      } else {
+        body.style.background = '#000';
+        video = document.createElement('video');
+        video.src = s.media_url;
+        video.playsInline = true;
+        body.append(video);
+        if (s.body) body.append(h('div', 'sv-caption', s.body));
+      }
+
+      const fill = fills[i];
+      if (video) {
+        video.onended = next;
+        video.ontimeupdate = () => {
+          if (video.duration) fill.style.width = (video.currentTime / video.duration * 100) + '%';
+        };
+        video.play().catch(() => { video.muted = true; video.play().catch(() => {}); });
+      } else {
+        fill.style.transition = 'none';
+        fill.style.width = '0%';
+        void fill.offsetWidth;
+        fill.style.transition = 'width 5000ms linear';
+        fill.style.width = '100%';
+        timer = setTimeout(next, 5000);
+      }
+
+      if (isMine) {
+        foot.append(h('span', null, s.view_count + (s.view_count === 1 ? ' view' : ' views')));
+        const del = h('button', 'sv-btn', 'Delete');
+        del.type = 'button';
+        del.onclick = async e => {
+          e.stopPropagation();
+          if (!confirm('Delete this story?')) return;
+          try {
+            const r = await fetch('/api/stories/' + s.id, { method: 'DELETE' });
+            if (!r.ok) throw new Error('status ' + r.status);
+            stories.splice(i, 1);
+            if (!stories.length) close(); else show(Math.min(i, stories.length - 1));
+          } catch (err) {
+            console.error('Could not delete story:', err);
+          }
+        };
+        foot.append(del);
+      } else {
+        fetch('/api/stories/' + s.id + '/view', { method: 'POST' }).catch(() => {});
+      }
+    }
+    show(i);
+  }
+
+  function openCreator() {
+    const state = { mode: 'text', bg: COLORS[0], mood: '', file: null };
+    const ov = h('div', 'sc-overlay');
+    const card = h('div', 'sc-card');
+    ov.append(card);
+
+    const tabs = h('div', 'sc-tabs');
+    const tText = h('button', 'sc-tab on', 'Text');
+    const tMedia = h('button', 'sc-tab', 'Photo / video');
+    tText.type = tMedia.type = 'button';
+    tabs.append(tText, tMedia);
+
+    const ta = h('textarea', 'sc-text colored');
+    ta.maxLength = 280;
+    const count = h('div', 'sc-count', '0 / 280');
+    ta.oninput = () => { count.textContent = ta.value.length + ' / 280'; };
+
+    const swatches = h('div', 'sc-swatches');
+    const sw = COLORS.map(c => {
+      const b = h('button', 'sc-swatch' + (c === state.bg ? ' on' : ''));
+      b.type = 'button';
+      b.style.background = c;
+      b.setAttribute('aria-label', 'Background ' + c);
+      b.onclick = () => { state.bg = c; sw.forEach(o => o.classList.toggle('on', o === b)); paint(); };
+      return b;
+    });
+    swatches.append(...sw);
+
+    const fileWrap = h('div');
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm';
+    const preview = h('div', 'sc-preview');
+    fileWrap.append(input, preview);
+
+    const err = h('p', 'sc-err');
+    input.onchange = () => {
+      err.textContent = '';
+      preview.replaceChildren();
+      state.file = null;
+      const f = input.files[0];
+      if (!f) return;
+      if (f.size > 25 * 1024 * 1024) { err.textContent = 'File is too large (max 25 MB).'; input.value = ''; return; }
+      const url = URL.createObjectURL(f);
+      if (f.type.startsWith('video/')) {
+        const v = document.createElement('video');
+        v.src = url;
+        v.controls = true;
+        v.onloadedmetadata = () => {
+          if (v.duration > 30) {
+            err.textContent = 'Videos can be at most 30 seconds.';
+            preview.replaceChildren();
+            input.value = '';
+            state.file = null;
+          }
+        };
+        preview.append(v);
+      } else {
+        const im = document.createElement('img');
+        im.src = url;
+        im.alt = '';
+        preview.append(im);
+      }
+      state.file = f;
+    };
+
+    const moodsLabel = h('div', 'sc-count', 'How are you feeling? (optional)');
+    moodsLabel.style.textAlign = 'left';
+    const moods = h('div', 'sc-moods');
+    const moodBtns = MOODS.map(m => {
+      const b = h('button', 'sc-mood', (moodEmoji(m) + ' ' + m).trim());
+      b.type = 'button';
+      b.onclick = () => {
+        state.mood = state.mood === m ? '' : m;
+        moodBtns.forEach(o => o.classList.toggle('on', o === b && state.mood === m));
+      };
+      return b;
+    });
+    moods.append(...moodBtns);
+
+    const row = h('div', 'sc-row');
+    const cancel = h('button', 'sc-btn', 'Cancel');
+    const share = h('button', 'sc-btn primary', 'Share');
+    cancel.type = share.type = 'button';
+    row.append(cancel, share);
+
+    function paint() {
+      const isText = state.mode === 'text';
+      tText.classList.toggle('on', isText);
+      tMedia.classList.toggle('on', !isText);
+      ta.classList.toggle('colored', isText);
+      ta.style.background = isText ? state.bg : '';
+      ta.placeholder = isText ? 'What is on your mind today?' : 'Add a caption (optional)';
+      swatches.hidden = !isText;
+      fileWrap.hidden = isText;
+    }
+    tText.onclick = () => { state.mode = 'text'; paint(); };
+    tMedia.onclick = () => { state.mode = 'media'; paint(); };
+
+    function closeCreator() { document.removeEventListener('keydown', onKey); ov.remove(); }
+    function onKey(e) { if (e.key === 'Escape') closeCreator(); }
+    document.addEventListener('keydown', onKey);
+    cancel.onclick = closeCreator;
+    ov.onclick = e => { if (e.target === ov) closeCreator(); };
+
+    share.onclick = async () => {
+      err.textContent = '';
+      const text = ta.value.trim();
+      if (state.mode === 'media' && !state.file) { err.textContent = 'Choose a photo or video first.'; return; }
+      if (state.mode === 'text' && !text) { err.textContent = 'Write something first.'; return; }
+      const fd = new FormData();
+      fd.append('body', text);
+      fd.append('bg_color', state.bg);
+      if (state.mood) fd.append('mood', state.mood);
+      if (state.mode === 'media' && state.file) fd.append('media', state.file);
+      share.disabled = true;
+      share.textContent = 'Sharing...';
+      try {
+        const res = await fetch('/api/stories', { method: 'POST', body: fd });
+        if (res.status === 401) throw new Error('Please log in again.');
+        if (res.status === 413) throw new Error('File is too large (max 25 MB).');
+        if (res.status === 415) throw new Error('That file type is not supported.');
+        if (!res.ok) throw new Error('Could not share (' + res.status + ').');
+        closeCreator();
+        refreshTray();
+      } catch (e) {
+        err.textContent = e.message;
+        share.disabled = false;
+        share.textContent = 'Share';
+      }
+    };
+
+    card.append(h('h3', 'sc-title', 'Share how you feel today'), tabs, ta, count, swatches, fileWrap, moodsLabel, moods, err, row);
+    paint();
+    document.body.append(ov);
+  }
+
+  refreshTray();
+  setInterval(refreshTray, 30000);
+
+  function openFromHash() {
+    const m = location.hash.match(/^#\/story\/([^\/?#]+)/);
+    if (!m) return;
+    const name = decodeURIComponent(m[1]);
+    history.replaceState(null, '', location.pathname + location.search + '#/');
+    openViewer(name, null);
+  }
+  window.addEventListener('hashchange', openFromHash);
+  openFromHash();
+  window.addEventListener('hashchange', refreshTray);
 })();
 </script>
 </body>
