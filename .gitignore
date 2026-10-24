@@ -5,4 +5,7 @@ static/uploads/
 /private_uploads/
 backup-*.sql
 backup-*.sql
+<<<<<<< HEAD
 .env*
+=======
+>>>>>>> cbb8b8f3f3b06936448b1f518ecd21b661662cc0
