@@ -147,6 +147,100 @@ struct ConversationSummary {
     members: Vec<String>,
     latest_message: Option<String>,
     latest_message_at: Option<String>,
+    unread_count: i64,
+}
+
+#[derive(Serialize, FromRow)]
+struct AdminUser {
+    id: i32,
+    username: String,
+    email: Option<String>,
+    phone_number: Option<String>,
+    display_name: Option<String>,
+    age: Option<i32>,
+    bio: Option<String>,
+    location: Option<String>,
+    mood: Option<String>,
+    interests: Option<String>,
+    relationship_status: Option<String>,
+    avatar_url: Option<String>,
+    cover_image_url: Option<String>,
+    created_at: String,
+    account_enabled: bool,
+    profile_visibility: String,
+    message_privacy: String,
+    show_activity_status: bool,
+    keep_profile_visitors: bool,
+    notify_mentions: bool,
+    cover_position_x: i32,
+    cover_position_y: i32,
+    cover_zoom: i32,
+    is_admin: bool,
+    post_count: i64,
+}
+
+#[derive(Serialize, FromRow)]
+struct AdminReport {
+    id: i64,
+    reporter: String,
+    post_id: i32,
+    post_author: String,
+    reason: String,
+    details: String,
+    created_at: String,
+}
+
+#[derive(Serialize, FromRow)]
+struct AdminChatReport {
+    id: i64,
+    reporter: String,
+    conversation_id: i32,
+    details: String,
+    created_at: String,
+}
+
+#[derive(Serialize, FromRow)]
+struct AdminPost {
+    id: i32,
+    author: String,
+    image_url: String,
+    media_type: String,
+    caption: String,
+    created_at: String,
+}
+
+#[derive(Serialize)]
+struct AdminOverview {
+    users: Vec<AdminUser>,
+    posts: Vec<AdminPost>,
+    reports: Vec<AdminReport>,
+    chat_reports: Vec<AdminChatReport>,
+    config: AdminConfig,
+    total_users: i64,
+    total_posts: i64,
+    total_messages: i64,
+    total_groups: i64,
+    total_reports: i64,
+}
+
+#[derive(Serialize, FromRow)]
+struct AdminConfig {
+    allow_signups: bool,
+}
+
+#[derive(Deserialize)]
+struct AdminUserUpdate {
+    account_enabled: bool,
+}
+
+#[derive(Deserialize)]
+struct ChatReportRequest {
+    details: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct AdminConfigUpdate {
+    allow_signups: bool,
 }
 
 #[derive(Serialize, FromRow)]
@@ -155,6 +249,7 @@ struct DirectMessage {
     sender: String,
     body: String,
     image_url: Option<String>,
+    media_type: Option<String>,
     created_at: String,
 }
 
@@ -400,6 +495,7 @@ struct SignupRequest {
 #[derive(Serialize)]
 struct UserInfo {
     username: String,
+    is_admin: bool,
     cover_image_url: Option<String>,
     cover_position_x: i32,
     cover_position_y: i32,
@@ -829,6 +925,19 @@ async fn signup(
     State(pool): State<PgPool>,
     Json(c): Json<SignupRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    let signups_enabled: bool = sqlx::query_scalar(
+        "SELECT value = 'true' FROM app_settings WHERE key = 'allow_signups'",
+    )
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("signup setting lookup failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .unwrap_or(true);
+    if !signups_enabled {
+        return Err(StatusCode::FORBIDDEN);
+    }
     let email = c.email.trim().to_ascii_lowercase();
     let first_name = c.first_name.trim();
     let last_name = c.last_name.trim();
@@ -911,6 +1020,7 @@ async fn signup(
         [(header::SET_COOKIE, cookie)],
         Json(UserInfo {
             username: c.username,
+            is_admin: false,
             cover_image_url: None,
             cover_position_x: 50,
             cover_position_y: 50,
@@ -923,9 +1033,9 @@ async fn login(
     State(pool): State<PgPool>,
     Json(c): Json<Credentials>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let row: Option<(i32, Option<String>, Option<String>, i32, i32, i32)> = sqlx::query_as(
-        "SELECT id, password_hash, cover_image_url, cover_position_x, cover_position_y, cover_zoom
-             FROM users WHERE username = $1",
+    let row: Option<(i32, Option<String>, Option<String>, i32, i32, i32, bool)> = sqlx::query_as(
+        "SELECT id, password_hash, cover_image_url, cover_position_x, cover_position_y, cover_zoom, is_admin
+             FROM users WHERE username = $1 AND account_enabled = TRUE",
     )
     .bind(&c.username)
     .fetch_optional(&pool)
@@ -936,10 +1046,10 @@ async fn login(
     })?;
 
     // Same 401 for "no such user" and "wrong password", so attackers can't tell which.
-    let (user_id, stored_hash, cover_image_url, cover_position_x, cover_position_y, cover_zoom) =
+    let (user_id, stored_hash, cover_image_url, cover_position_x, cover_position_y, cover_zoom, is_admin) =
         match row {
-            Some((id, Some(h), cover_image_url, position_x, position_y, zoom)) => {
-                (id, h, cover_image_url, position_x, position_y, zoom)
+            Some((id, Some(h), cover_image_url, position_x, position_y, zoom, is_admin)) => {
+                (id, h, cover_image_url, position_x, position_y, zoom, is_admin)
             }
             _ => return Err(StatusCode::UNAUTHORIZED),
         };
@@ -954,6 +1064,7 @@ async fn login(
         [(header::SET_COOKIE, cookie)],
         Json(UserInfo {
             username: c.username,
+            is_admin,
             cover_image_url,
             cover_position_x,
             cover_position_y,
@@ -987,10 +1098,10 @@ fn checkin_category_is_valid(category: &str) -> bool {
 
 async fn me(State(pool): State<PgPool>, headers: HeaderMap) -> Result<Json<UserInfo>, StatusCode> {
     let token = session_token(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
-    let row: Option<(String, Option<String>, i32, i32, i32)> = sqlx::query_as(
-        "SELECT u.username, u.cover_image_url, u.cover_position_x, u.cover_position_y, u.cover_zoom
+    let row: Option<(String, Option<String>, i32, i32, i32, bool)> = sqlx::query_as(
+        "SELECT u.username, u.cover_image_url, u.cover_position_x, u.cover_position_y, u.cover_zoom, u.is_admin
          FROM sessions s JOIN users u ON u.id = s.user_id
-         WHERE s.token = $1 AND s.created_at > now() - interval '7 days'",
+         WHERE s.token = $1 AND s.created_at > now() - interval '7 days' AND u.account_enabled",
     )
     .bind(&token)
     .fetch_optional(&pool)
@@ -1001,9 +1112,10 @@ async fn me(State(pool): State<PgPool>, headers: HeaderMap) -> Result<Json<UserI
     })?;
 
     match row {
-        Some((username, cover_image_url, cover_position_x, cover_position_y, cover_zoom)) => {
+        Some((username, cover_image_url, cover_position_x, cover_position_y, cover_zoom, is_admin)) => {
             Ok(Json(UserInfo {
                 username,
+                is_admin,
                 cover_image_url,
                 cover_position_x,
                 cover_position_y,
@@ -1033,7 +1145,8 @@ async fn logout(State(pool): State<PgPool>, headers: HeaderMap) -> impl IntoResp
 async fn current_user_id(pool: &PgPool, headers: &HeaderMap) -> Result<i32, StatusCode> {
     let token = session_token(headers).ok_or(StatusCode::UNAUTHORIZED)?;
     let row: Option<(i32,)> = sqlx::query_as(
-        "SELECT user_id FROM sessions WHERE token = $1 AND created_at > now() - interval '7 days'",
+        "SELECT s.user_id FROM sessions s JOIN users u ON u.id = s.user_id
+         WHERE s.token = $1 AND s.created_at > now() - interval '7 days' AND u.account_enabled",
     )
     .bind(&token)
     .fetch_optional(pool)
@@ -1043,6 +1156,163 @@ async fn current_user_id(pool: &PgPool, headers: &HeaderMap) -> Result<i32, Stat
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     row.map(|(id,)| id).ok_or(StatusCode::UNAUTHORIZED)
+}
+
+async fn require_admin(pool: &PgPool, headers: &HeaderMap) -> Result<i32, StatusCode> {
+    let user_id = current_user_id(pool, headers).await?;
+    let is_admin: bool = sqlx::query_scalar("SELECT is_admin FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| {
+            eprintln!("admin role lookup failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if !is_admin {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    Ok(user_id)
+}
+
+async fn admin_overview(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+) -> Result<Json<AdminOverview>, StatusCode> {
+    require_admin(&pool, &headers).await?;
+    let config = sqlx::query_as::<_, AdminConfig>(
+        "SELECT value = 'true' AS allow_signups FROM app_settings WHERE key = 'allow_signups'",
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("admin configuration query failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let users = sqlx::query_as::<_, AdminUser>(
+        r#"SELECT u.id, u.username, u.email, u.phone_number, u.display_name,
+                  u.age, u.bio, u.location, u.mood, u.interests,
+                  u.relationship_status, u.avatar_url, u.cover_image_url,
+                  to_char(u.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
+                  u.account_enabled, u.profile_visibility, u.message_privacy,
+                  u.show_activity_status, u.keep_profile_visitors, u.notify_mentions,
+                  u.cover_position_x, u.cover_position_y, u.cover_zoom, u.is_admin,
+                  (SELECT COUNT(*) FROM posts p WHERE p.user_id = u.id) AS post_count
+           FROM users u ORDER BY u.created_at DESC, u.id DESC"#,
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("admin users query failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let posts = sqlx::query_as::<_, AdminPost>(
+        r#"SELECT p.id, u.username AS author, p.image_url, p.media_type, p.caption,
+                  to_char(p.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at
+           FROM posts p JOIN users u ON u.id = p.user_id
+           ORDER BY p.created_at DESC, p.id DESC LIMIT 500"#,
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("admin posts query failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let reports = sqlx::query_as::<_, AdminReport>(
+        r#"SELECT r.id, reporter.username AS reporter, r.post_id,
+                  author.username AS post_author, r.reason, r.details,
+                  to_char(r.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at
+           FROM post_reports r
+           JOIN users reporter ON reporter.id = r.reporter_id
+           JOIN posts p ON p.id = r.post_id
+           JOIN users author ON author.id = p.user_id
+           ORDER BY r.created_at DESC LIMIT 200"#,
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("admin reports query failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let chat_reports = sqlx::query_as::<_, AdminChatReport>(
+        r#"SELECT r.id, u.username AS reporter, r.conversation_id, r.details,
+                  to_char(r.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at
+           FROM conversation_reports r JOIN users u ON u.id = r.reporter_id
+           ORDER BY r.created_at DESC LIMIT 200"#,
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("admin chat reports query failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let (total_users, total_posts, total_messages, total_groups, total_reports): (i64, i64, i64, i64, i64) = sqlx::query_as(
+        r#"SELECT (SELECT COUNT(*) FROM users), (SELECT COUNT(*) FROM posts),
+                  (SELECT COUNT(*) FROM direct_messages),
+                  (SELECT COUNT(*) FROM conversations WHERE is_group),
+                  (SELECT (SELECT COUNT(*) FROM post_reports) + (SELECT COUNT(*) FROM conversation_reports))"#,
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("admin metrics query failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(AdminOverview {
+        users,
+        posts,
+        reports,
+        chat_reports,
+        config,
+        total_users,
+        total_posts,
+        total_messages,
+        total_groups,
+        total_reports,
+    }))
+}
+
+async fn admin_update_config(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Json(update): Json<AdminConfigUpdate>,
+) -> Result<StatusCode, StatusCode> {
+    require_admin(&pool, &headers).await?;
+    sqlx::query(
+        "INSERT INTO app_settings (key, value) VALUES ('allow_signups', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()",
+    )
+    .bind(if update.allow_signups { "true" } else { "false" })
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("admin configuration update failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn admin_update_user(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(target_id): Path<i32>,
+    Json(update): Json<AdminUserUpdate>,
+) -> Result<StatusCode, StatusCode> {
+    let admin_id = require_admin(&pool, &headers).await?;
+    if target_id == admin_id {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let result = sqlx::query("UPDATE users SET account_enabled = $1 WHERE id = $2")
+        .bind(update.account_enabled)
+        .bind(target_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| {
+            eprintln!("admin user update failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn can_view_profile(
@@ -2362,7 +2632,11 @@ async fn list_conversations(
                 FROM direct_messages m
                 WHERE m.conversation_id = c.id
                 ORDER BY m.id DESC
-                LIMIT 1) AS latest_message_at
+                LIMIT 1) AS latest_message_at,
+               (SELECT COUNT(*) FROM direct_messages m
+                WHERE m.conversation_id = c.id
+                  AND m.sender_id <> $1
+                  AND m.created_at > COALESCE(mine.last_read_at, mine.joined_at)) AS unread_count
         FROM conversations c
         JOIN conversation_members mine
           ON mine.conversation_id = c.id AND mine.user_id = $1
@@ -2852,6 +3126,15 @@ async fn list_messages(
     if !is_member {
         return Err(StatusCode::NOT_FOUND);
     }
+    sqlx::query("UPDATE conversation_members SET last_read_at = now() WHERE conversation_id = $1 AND user_id = $2")
+        .bind(conversation_id)
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| {
+            eprintln!("conversation read receipt update failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     let messages = sqlx::query_as::<_, DirectMessage>(
         r#"
         SELECT m.id,
@@ -2860,6 +3143,8 @@ async fn list_messages(
                CASE WHEN m.image_path IS NOT NULL
                     THEN '/api/messages/' || m.id || '/image'
                END AS image_url,
+               CASE WHEN RIGHT(m.image_path, 4) = '.mp4' OR RIGHT(m.image_path, 5) = '.webm'
+                    THEN 'video' ELSE 'image' END AS media_type,
                to_char(m.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at
         FROM direct_messages m
         JOIN users u ON u.id = m.sender_id
@@ -2949,11 +3234,12 @@ async fn send_message(
             Some("body") => body = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?,
             Some("image") => {
                 let bytes = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
-                if bytes.len() > 10 * 1024 * 1024 {
+                if bytes.len() > 50 * 1024 * 1024 {
                     return Err(StatusCode::PAYLOAD_TOO_LARGE);
                 }
-                let extension =
-                    image_extension(&bytes).ok_or(StatusCode::UNSUPPORTED_MEDIA_TYPE)?;
+                let extension = image_extension(&bytes)
+                    .or_else(|| video_extension(&bytes))
+                    .ok_or(StatusCode::UNSUPPORTED_MEDIA_TYPE)?;
                 image = Some((bytes.to_vec(), extension));
             }
             _ => {}
@@ -2981,6 +3267,8 @@ async fn send_message(
                CASE WHEN inserted.image_path IS NOT NULL
                     THEN '/api/messages/' || inserted.id || '/image'
                END AS image_url,
+               CASE WHEN RIGHT(inserted.image_path, 4) = '.mp4' OR RIGHT(inserted.image_path, 5) = '.webm'
+                    THEN 'video' ELSE 'image' END AS media_type,
                to_char(inserted.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at
         FROM inserted JOIN users u ON u.id = inserted.sender_id
         "#,
@@ -3001,6 +3289,69 @@ async fn send_message(
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
+}
+
+async fn delete_conversation(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(conversation_id): Path<i32>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let result = sqlx::query(
+        "DELETE FROM conversation_members WHERE conversation_id = $1 AND user_id = $2",
+    )
+    .bind(conversation_id)
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("conversation removal failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn report_conversation(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(conversation_id): Path<i32>,
+    Json(report): Json<ChatReportRequest>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let is_member: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM conversation_members WHERE conversation_id = $1 AND user_id = $2)",
+    )
+    .bind(conversation_id)
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("chat report membership check failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    if !is_member {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    let details = report.details.unwrap_or_default().trim().to_string();
+    if details.chars().count() > 500 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    sqlx::query(
+        "INSERT INTO conversation_reports (conversation_id, reporter_id, details) VALUES ($1, $2, $3) ON CONFLICT (conversation_id, reporter_id) DO UPDATE SET details = EXCLUDED.details, created_at = now()",
+    )
+    .bind(conversation_id)
+    .bind(user_id)
+    .bind(details)
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("chat report submission failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(StatusCode::CREATED)
 }
 
 async fn read_message_image(
@@ -3042,6 +3393,8 @@ async fn read_message_image(
         Some("png") => "image/png",
         Some("webp") => "image/webp",
         Some("gif") => "image/gif",
+        Some("mp4") => "video/mp4",
+        Some("webm") => "video/webm",
         _ => return Err(StatusCode::INTERNAL_SERVER_ERROR),
     };
     Ok((
@@ -3492,6 +3845,13 @@ async fn ensure_user_settings_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
             END IF;
 
             IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'is_admin'
+            ) THEN
+                ALTER TABLE users ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+            END IF;
+
+            IF NOT EXISTS (
                 SELECT 1
                 FROM information_schema.columns
                 WHERE table_schema = 'public'
@@ -3561,6 +3921,37 @@ async fn ensure_user_settings_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     )
     .execute(pool)
     .await?;
+
+    sqlx::query("ALTER TABLE conversation_members ADD COLUMN IF NOT EXISTS last_read_at TIMESTAMPTZ")
+        .execute(pool)
+        .await?;
+
+    sqlx::query(
+        r#"CREATE TABLE IF NOT EXISTS conversation_reports (
+            id BIGSERIAL PRIMARY KEY,
+            conversation_id INT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            reporter_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            details TEXT NOT NULL DEFAULT '',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            UNIQUE (conversation_id, reporter_id),
+            CHECK (char_length(details) <= 500)
+        )"#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )"#,
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query("INSERT INTO app_settings (key, value) VALUES ('allow_signups', 'true') ON CONFLICT (key) DO NOTHING")
+        .execute(pool)
+        .await?;
 
     sqlx::query(
         r#"
@@ -3679,12 +4070,30 @@ async fn main() {
     ensure_user_settings_schema(&pool)
         .await
         .expect("user settings schema could not be initialized");
+    if let Ok(admin_usernames) = std::env::var("ADMIN_USERNAMES") {
+        let names: Vec<String> = admin_usernames
+            .split(',')
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(str::to_owned)
+            .collect();
+        if !names.is_empty() {
+            sqlx::query("UPDATE users SET is_admin = TRUE WHERE username = ANY($1)")
+                .bind(names)
+                .execute(&pool)
+                .await
+                .expect("could not apply ADMIN_USERNAMES");
+        }
+    }
 
     let app = Router::new()
         .route("/api/feed", get(feed))
         .route("/api/signup", post(signup))
         .route("/api/login", post(login))
         .route("/api/me", get(me))
+        .route("/api/admin/overview", get(admin_overview))
+        .route("/api/admin/users/{id}", put(admin_update_user))
+        .route("/api/admin/config", put(admin_update_config))
         .route(
             "/api/me/settings",
             get(get_user_settings).put(update_user_settings),
@@ -3734,8 +4143,10 @@ async fn main() {
             "/api/conversations/{id}/messages",
             get(list_messages)
                 .post(send_message)
-                .layer(DefaultBodyLimit::max(11 * 1024 * 1024)),
+                .layer(DefaultBodyLimit::max(51 * 1024 * 1024)),
         )
+        .route("/api/conversations/{id}", delete(delete_conversation))
+        .route("/api/conversations/{id}/report", post(report_conversation))
         .route("/api/users/search", get(search_users))
         .route("/api/messages/{id}/image", get(read_message_image))
         .route("/api/logout", post(logout))

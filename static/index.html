@@ -57,9 +57,9 @@
     .hero::before, .hero::after { content: ""; position: absolute; z-index: -1; border-radius: 50%; pointer-events: none; }
     .hero::before { width: 310px; height: 310px; right: 16%; top: -225px; background: #e7dafa; filter: blur(2px); }
     .hero::after { width: 240px; height: 240px; right: -100px; bottom: -155px; background: #ffd9cd; }
-    .hero-cover { position: absolute; z-index: -1; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .hero-cover { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; object-fit: cover; }
     .hero.has-cover { background: #28233b; border-color: #28233b; }
-    .hero.has-cover::before { inset: 0; z-index: 0; width: auto; height: auto; border-radius: 0; background: linear-gradient(90deg, #201c2ee8 0%, #201c2eae 48%, #201c2e38 100%); filter: none; }
+    .hero.has-cover::before { inset: 0; z-index: 1; width: auto; height: auto; border-radius: 0; background: linear-gradient(90deg, #201c2ee8 0%, #201c2eae 48%, #201c2e38 100%); filter: none; }
     .hero.has-cover::after { display: none; }
     .hero.has-cover .eyebrow, .hero.has-cover h1, .hero.has-cover .hero-copy p { color: white; }
     .hero.has-cover h1 em { color: #e2d6ff; }
@@ -73,7 +73,8 @@
     .mood-badge.profile-mood-badge { right: 0; bottom: 0; width: 30px; height: 30px; font-size: 17px; }
     .active-user-name { width: 100%; overflow: hidden; color: #625e70; font-size: 10px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
     .active-users-empty { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
-    .hero-cover-actions { position: absolute; z-index: 2; top: 14px; right: 15px; display: grid; justify-items: end; gap: 8px; max-width: min(460px, calc(100% - 30px)); }
+    .hero-cover-actions { position: absolute; z-index: 3; top: 14px; right: 15px; display: grid; justify-items: end; gap: 8px; max-width: min(460px, calc(100% - 30px)); }
+    .hero-copy { position: relative; z-index: 2; }
     .hero-cover-actions[hidden] { display: none; }
     .hero-cover-buttons { display: flex; align-items: center; gap: 7px; }
     .hero-cover-actions button { padding: 7px 10px; border-color: #ffffffa8; background: #ffffffdf; color: #302b40; font-size: 10px; }
@@ -93,6 +94,17 @@
     .cover-zoom-controls { display: flex; align-items: center; gap: 8px; }
     .cover-zoom-value { min-width: 42px; color: #514d60; font-size: 11px; text-align: center; }
     .cover-editor-hint { flex: 1; color: var(--muted); font-size: 10px; }
+    .admin-link { color: #7655e8; }
+    #adminView { max-width: 1220px; margin: 32px auto; padding: 0 24px 56px; }
+    .admin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 12px; margin: 18px 0 24px; }
+    .admin-stat, .admin-panel { padding: 16px; border: 1px solid var(--line); border-radius: 15px; background: white; box-shadow: 0 8px 24px #34235d08; }
+    .admin-stat strong { display: block; font-size: 24px; }
+    .admin-stat span, .admin-muted { color: var(--muted); font-size: 11px; }
+    .admin-panel { margin: 14px 0; overflow-x: auto; }
+    .admin-panel h2 { margin: 0 0 12px; font-size: 17px; }
+    .admin-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .admin-table th, .admin-table td { padding: 9px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    .admin-table th { color: var(--muted); font-weight: 650; white-space: nowrap; }
     .map-section { overflow: hidden; border: 1px solid var(--line); border-radius: 19px; background: white; box-shadow: 0 10px 30px #34235d08; }
     .map-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 17px 20px 12px; }
     .map-heading h2 { margin: 0; font-family: var(--serif); font-size: 23px; font-weight: 500; }
@@ -250,6 +262,9 @@
     .conversation-sidebar { padding: 18px; border-right: 1px solid var(--line); }
     .conversation-sidebar-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 14px; }
     .conversation-sidebar-head h2 { margin: 0; font-size: 15px; }
+    .message-filters { display: flex; gap: 5px; overflow-x: auto; margin: 0 -2px 12px; padding: 2px; }
+    .message-filter { flex: none; padding: 7px 9px; border-radius: 999px; font-size: 10px; }
+    .message-filter.active { color: white; background: #29243d; border-color: #29243d; }
     .conversation-sidebar-head button, .new-conversation button { padding: 8px 10px; color: white; background: var(--violet); border-color: var(--violet); font-size: 11px; }
     .new-conversation { display: grid; gap: 8px; margin-bottom: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 13px; background: #f8f8f3; }
     .new-conversation[hidden] { display: none; }
@@ -270,8 +285,15 @@
     .conversation-name, .conversation-preview { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .conversation-name { font-size: 12px; font-weight: 700; }
     .conversation-preview { margin-top: 3px; color: var(--muted); font-size: 10px; font-weight: 400; }
+    .conversation-unread { display: inline-grid; min-width: 17px; height: 17px; place-items: center; margin-left: 5px; padding: 0 4px; border-radius: 999px; background: var(--violet); color: white; font-size: 9px; }
     .chat-pane { min-width: 0; display: flex; flex-direction: column; }
-    .chat-heading { min-height: 62px; padding: 14px 20px; border-bottom: 1px solid var(--line); font-size: 14px; font-weight: 700; }
+    .chat-heading { min-height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); font-size: 14px; font-weight: 700; }
+    .chat-heading-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chat-actions { position: relative; display: flex; align-items: center; gap: 5px; }
+    .chat-actions summary { padding: 6px 9px; border: 1px solid var(--line); border-radius: 9px; cursor: pointer; list-style: none; font-size: 12px; }
+    .chat-menu { position: absolute; z-index: 5; top: calc(100% + 5px); right: 0; display: grid; width: 180px; padding: 5px; border: 1px solid var(--line); border-radius: 11px; background: white; box-shadow: 0 8px 24px #26213b1a; }
+    .chat-menu button { border: 0; background: white; text-align: left; font-size: 11px; }
+    .chat-window { position: fixed; z-index: 100; right: 20px; bottom: 20px; width: min(460px, calc(100vw - 30px)); height: min(640px, calc(100vh - 100px)); min-height: 360px; border: 1px solid var(--line); border-radius: 16px; background: white; box-shadow: 0 15px 50px #201c2e45; }
     .message-list { min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; padding: 20px; }
     .message-empty { margin: auto; color: var(--muted); font-size: 12px; text-align: center; }
     .message-bubble { max-width: min(76%, 460px); align-self: flex-start; padding: 10px 13px; border-radius: 15px 15px 15px 4px; background: #f0f2ec; color: var(--ink); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
@@ -281,8 +303,14 @@
     .message-time { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; }
     .message-composer { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
     .message-composer input[type=text] { flex: 1; }
-    .message-composer input[type=file] { width: 175px; min-width: 0; color: var(--muted); font-size: 10px; }
+    .message-composer input[type=file] { display: none; }
     .message-composer button { color: white; background: var(--violet); border-color: var(--violet); }
+    .message-composer .media-tool { width: 34px; min-width: 34px; padding: 7px 0; color: var(--ink); background: #f7f6fb; border-color: var(--line); }
+    .emoji-tray { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 12px; border-top: 1px solid var(--line); }
+    .emoji-tray[hidden] { display: none; }
+    .emoji-tray button { padding: 5px; border: 0; background: transparent; font-size: 20px; }
+    .message-media { display: block; max-width: 100%; max-height: 300px; margin-top: 6px; border-radius: 9px; }
+    .message-bubble video.message-media { height: auto; background: #17151d; }
     .inbox-note { margin: 8px 0 0; color: var(--muted); font-size: 10px; }
     #profileView { max-width: 760px; margin: 36px auto; padding: 0 22px; }
     #profileView .back { color: var(--muted); text-decoration: none; font-size: 13px; }
@@ -532,6 +560,18 @@
 .fb-btn.primary { border-color: var(--violet); background: var(--violet); color: white; }
 .fb-fab.in-nav { position: static; right: auto; bottom: auto; z-index: auto; margin-left: 10px; padding: 7px 16px; vertical-align: middle; background: #ff4d1f; color: white; font-size: 13px; font-weight: 800; letter-spacing: .02em; white-space: nowrap; box-shadow: 0 0 0 2px #fff, 0 4px 14px #ff4d1f66; }
 .fb-fab.in-nav:hover { background: #e63e12; filter: none; transform: translateY(-1px); }
+    @media (max-width: 560px) {
+      .hero.has-cover::before { background: linear-gradient(100deg, #201c2e88 0%, #201c2e55 58%, #201c2e22 100%); }
+      .hero-cover-actions { top: 10px; right: 10px; left: 10px; max-width: none; justify-items: stretch; }
+      .hero-cover-buttons { flex-wrap: wrap; justify-content: flex-end; }
+      .hero-cover-actions button { min-height: 36px; font-size: 11px; }
+      .cover-editor { gap: 8px; padding: 7px; }
+      .cover-direction-controls { grid-template-columns: repeat(3, 27px); grid-template-rows: repeat(3, 26px); }
+      .cover-editor button { width: 27px; min-height: 26px; }
+      .cover-editor-hint { display: none; }
+      .chat-window { right: 8px; bottom: 8px; width: calc(100vw - 16px); height: min(72vh, 620px); }
+      #adminView { margin: 22px auto; padding-inline: 14px; }
+    }
 </style>
 </head>
 <body>
@@ -621,6 +661,7 @@
   </div>
   <div id="profileView" hidden></div>
   <div id="inboxView" hidden></div>
+  <div id="adminView" hidden></div>
   <div id="userSearchView" hidden></div>
   <div id="settingsView" hidden></div>
   <div id="signupView" hidden></div>
@@ -965,11 +1006,14 @@
     // ---------- routing ----------
     function route() {
       const h = location.hash;
+      document.getElementById('adminView').hidden = !h.startsWith('#/admin');
       if (h.startsWith('#/u/')) {
         const [username, dashboardSection] = h.slice(4).split('#', 2);
         showProfile(decodeURIComponent(username), false, dashboardSection || null);
       } else if (h === '#/inbox') {
         showInbox();
+      } else if (h === '#/admin') {
+        showAdmin();
       } else if (h === '#/search') {
         showUserSearch();
       } else if (h === '#/settings' || h.startsWith('#/settings#')) {
@@ -978,6 +1022,144 @@
         showSignup();
       } else {
         showHome();
+      }
+    }
+
+    async function showAdmin() {
+      stopInboxPolling();
+      ['homeView', 'profileView', 'inboxView', 'userSearchView', 'settingsView', 'signupView']
+        .forEach(id => { document.getElementById(id).hidden = true; });
+      const view = document.getElementById('adminView');
+      view.hidden = false;
+      view.replaceChildren(el('h1', 'Admin hub', 'inbox-title'));
+      const status = el('p', 'Loading admin data…', 'empty');
+      view.append(status);
+      try {
+        const response = await fetch('/api/admin/overview');
+        if (response.status === 403) throw new Error('This account is not an administrator. Set ADMIN_USERNAMES in the app environment and restart the server.');
+        if (!response.ok) throw new Error(response.status === 401 ? 'Please sign in again.' : 'Admin data could not be loaded.');
+        const data = await response.json();
+        const grid = el('div', undefined, 'admin-grid');
+        [['Users', data.total_users], ['Posts', data.total_posts], ['Messages', data.total_messages], ['Group chats', data.total_groups], ['Reports', data.total_reports]]
+          .forEach(([label, value]) => {
+            const card = el('div', undefined, 'admin-stat');
+            card.append(el('strong', String(value)), el('span', label));
+            grid.append(card);
+          });
+        const config = el('section', undefined, 'admin-panel');
+        config.append(el('h2', 'App settings and configuration'));
+        config.append(el('p', 'Server: Rust + Axum · Database: PostgreSQL · Uploads: images and video · Session lifetime: 7 days', 'admin-muted'));
+        config.append(el('p', 'Admin access is controlled by ADMIN_USERNAMES in the server environment. User privacy and account settings are listed below; account access can be enabled or paused here.', 'admin-muted'));
+        const signupLabel = el('label');
+        const signupToggle = el('input'); signupToggle.type = 'checkbox'; signupToggle.checked = data.config.allow_signups;
+        signupLabel.append(signupToggle, document.createTextNode(' Allow new account signups'));
+        const saveConfig = el('button', 'Save configuration'); saveConfig.type = 'button';
+        const configStatus = el('span', '', 'admin-muted');
+        saveConfig.onclick = async () => {
+          saveConfig.disabled = true;
+          const saved = await fetch('/api/admin/config', {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ allow_signups: signupToggle.checked }),
+          });
+          saveConfig.disabled = false;
+          configStatus.textContent = saved.ok ? 'Saved.' : 'Could not save this setting.';
+        };
+        config.append(signupLabel, saveConfig, configStatus);
+        const usersPanel = el('section', undefined, 'admin-panel');
+        usersPanel.append(el('h2', 'Accounts and user settings'));
+        const table = el('table', undefined, 'admin-table');
+        const head = el('tr');
+        ['User', 'Contact', 'Role / account', 'Profile data', 'Privacy settings', 'Avatar / cover', 'Cover position', 'Posts', 'Joined', 'Action'].forEach(label => head.append(el('th', label)));
+        const thead = el('thead'); thead.append(head); table.append(thead);
+        const tbody = el('tbody');
+        data.users.forEach(user => {
+          const row = el('tr');
+          const profileData = [user.display_name, user.age ? user.age + ' years' : '', user.location, user.mood, user.interests, user.relationship_status, user.bio]
+            .filter(Boolean).join(' · ') || '—';
+          const privacy = [user.profile_visibility, 'messages: ' + user.message_privacy,
+            'activity: ' + (user.show_activity_status ? 'shown' : 'hidden'),
+            'visitors: ' + (user.keep_profile_visitors ? 'saved' : 'off'),
+            'mentions: ' + (user.notify_mentions ? 'on' : 'off')].join(' · ');
+          row.append(el('td', '@' + user.username + (user.display_name ? ' · ' + user.display_name : '')),
+            el('td', [user.email, user.phone_number].filter(Boolean).join(' · ') || '—'),
+            el('td', (user.is_admin ? 'Admin' : 'Member') + ' · ' + (user.account_enabled ? 'Enabled' : 'Paused')),
+            el('td', profileData), el('td', privacy),
+            el('td', [user.avatar_url ? 'Avatar' : '', user.cover_image_url ? 'Cover' : ''].filter(Boolean).join(' · ') || '—'),
+            el('td', user.cover_position_x + '% / ' + user.cover_position_y + '% · ' + user.cover_zoom + '%'),
+            el('td', String(user.post_count)), el('td', new Date(user.created_at).toLocaleDateString()));
+          const actionCell = el('td');
+          const toggle = el('button', user.account_enabled ? 'Pause account' : 'Enable account');
+          toggle.disabled = user.username === currentUsername;
+          toggle.title = toggle.disabled ? 'Admins cannot pause their own account here.' : '';
+          toggle.onclick = async () => {
+            toggle.disabled = true;
+            const updated = await fetch('/api/admin/users/' + user.id, {
+              method: 'PUT', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ account_enabled: !user.account_enabled }),
+            });
+            if (updated.ok) showAdmin();
+            else { toggle.disabled = false; alert('Could not update this account.'); }
+          };
+          actionCell.append(toggle); row.append(actionCell); tbody.append(row);
+        });
+        table.append(tbody); usersPanel.append(table);
+        const postsPanel = el('section', undefined, 'admin-panel');
+        postsPanel.append(el('h2', 'Recent posts'), el('p', 'Showing up to 500 newest posts.', 'admin-muted'));
+        if (data.posts.length === 0) postsPanel.append(el('p', 'No posts have been published.', 'admin-muted'));
+        else {
+          const postsTable = el('table', undefined, 'admin-table');
+          const postHead = el('tr');
+          ['ID', 'Author', 'Caption', 'Media', 'Posted'].forEach(label => postHead.append(el('th', label)));
+          const postThead = el('thead'); postThead.append(postHead); postsTable.append(postThead);
+          const postBody = el('tbody');
+          data.posts.forEach(post => {
+            const row = el('tr');
+            row.append(el('td', '#' + post.id), el('td', '@' + post.author), el('td', post.caption || '—'));
+            const mediaCell = el('td'); const mediaLink = el('a', 'Open ' + post.media_type);
+            mediaLink.href = post.image_url; mediaLink.target = '_blank'; mediaLink.rel = 'noopener';
+            mediaCell.append(mediaLink); row.append(mediaCell, el('td', new Date(post.created_at).toLocaleString()));
+            postBody.append(row);
+          });
+          postsTable.append(postBody); postsPanel.append(postsTable);
+        }
+        const reportsPanel = el('section', undefined, 'admin-panel');
+        reportsPanel.append(el('h2', 'Recent post reports'));
+        if (data.reports.length === 0) reportsPanel.append(el('p', 'No reports have been submitted.', 'admin-muted'));
+        else {
+          const reports = el('table', undefined, 'admin-table');
+          const reportHead = el('tr');
+          ['Reporter', 'Post', 'Reason', 'Details', 'Reported'].forEach(label => reportHead.append(el('th', label)));
+          const reportThead = el('thead'); reportThead.append(reportHead); reports.append(reportThead);
+          const reportBody = el('tbody');
+          data.reports.forEach(report => {
+            const row = el('tr');
+            [('@' + report.reporter), ('#' + report.post_id + ' · @' + report.post_author), report.reason, report.details || '—', new Date(report.created_at).toLocaleString()]
+              .forEach(value => row.append(el('td', value)));
+            reportBody.append(row);
+          });
+          reports.append(reportBody); reportsPanel.append(reports);
+        }
+        const chatReportsPanel = el('section', undefined, 'admin-panel');
+        chatReportsPanel.append(el('h2', 'Recent chat reports'));
+        if (data.chat_reports.length === 0) chatReportsPanel.append(el('p', 'No chat reports have been submitted.', 'admin-muted'));
+        else {
+          const reports = el('table', undefined, 'admin-table');
+          const reportHead = el('tr');
+          ['Reporter', 'Conversation', 'Details', 'Reported'].forEach(label => reportHead.append(el('th', label)));
+          const reportThead = el('thead'); reportThead.append(reportHead); reports.append(reportThead);
+          const reportBody = el('tbody');
+          data.chat_reports.forEach(report => {
+            const row = el('tr');
+            [('@' + report.reporter), ('Conversation #' + report.conversation_id), report.details || '—', new Date(report.created_at).toLocaleString()]
+              .forEach(value => row.append(el('td', value)));
+            reportBody.append(row);
+          });
+          reports.append(reportBody); chatReportsPanel.append(reports);
+        }
+        view.replaceChildren(el('h1', 'Admin hub', 'inbox-title'), grid, config, usersPanel, postsPanel, reportsPanel, chatReportsPanel);
+      } catch (error) {
+        status.className = 'empty';
+        status.textContent = error.message;
       }
     }
 
@@ -1048,6 +1230,8 @@
           const response = await post('/api/signup', values);
           if (response.status === 409) {
             message.textContent = 'That username or email is already registered.';
+          } else if (response.status === 403) {
+            message.textContent = 'New account signups are currently closed by an administrator.';
           } else if (response.status === 400) {
             message.textContent = 'Check your email, name, username, age, phone number, bio and password.';
           } else if (!response.ok) {
@@ -2159,6 +2343,11 @@
         inbox.href = '#/inbox';
         const settings = el('a', 'Settings', 'inbox-link');
         settings.href = '#/settings';
+        if (me.is_admin) {
+          const admin = el('a', 'Admin hub', 'inbox-link admin-link');
+          admin.href = '#/admin';
+          box.append(admin);
+        }
         const out = el('button', 'Log out');
         out.onclick = async () => {
           await stopLiveLocationSharing(true);
@@ -2331,6 +2520,7 @@
       }
       newButton.onclick = () => {
         createForm.hidden = !createForm.hidden;
+        createSubmit.textContent = 'Start chat';
         if (!createForm.hidden) recipientInput.focus();
       };
       createForm.onsubmit = async event => {
@@ -2355,8 +2545,10 @@
             recipientInput.value = '';
             titleInput.value = '';
             createForm.hidden = true;
-            await loadConversations();
+            chat.hidden = false;
+            chat.classList.add('chat-window');
             await loadMessages(activeConversationId);
+            await loadConversations();
           } else if (response.status === 400) {
             createError.textContent = 'Select 1–9 existing users other than yourself.';
           } else if (response.status === 401) {
@@ -2371,11 +2563,83 @@
         }
       };
       const conversationList = el('div', undefined, 'conversation-list');
+      let inboxFilter = 'all';
+      let cachedConversations = [];
+      const messageFilters = el('div', undefined, 'message-filters');
+      const filterButtons = {};
+      [['all', 'All'], ['unread', 'Unread'], ['groups', 'Groups'], ['community', 'Community']].forEach(([key, label]) => {
+        const button = el('button', label, 'message-filter' + (key === inboxFilter ? ' active' : ''));
+        button.type = 'button';
+        button.onclick = () => {
+          inboxFilter = key;
+          Object.entries(filterButtons).forEach(([name, item]) => item.classList.toggle('active', name === key));
+          renderConversationItems();
+        };
+        filterButtons[key] = button;
+        messageFilters.append(button);
+      });
       sidebarHead.append(newButton);
-      sidebar.append(sidebarHead, createForm, conversationList);
+      sidebar.append(sidebarHead, createForm, messageFilters, conversationList);
 
       const chat = el('section', undefined, 'chat-pane');
-      const heading = el('div', 'Choose a conversation', 'chat-heading');
+      chat.hidden = true;
+      const heading = el('div', undefined, 'chat-heading');
+      const headingTitle = el('span', 'Choose a conversation', 'chat-heading-title');
+      const chatActions = el('div', undefined, 'chat-actions');
+      const chatMenu = el('details');
+      const chatMenuSummary = el('summary', '⋯');
+      const chatMenuItems = el('div', undefined, 'chat-menu');
+      const makeGroupAction = el('button', 'Create group chat');
+      makeGroupAction.type = 'button';
+      makeGroupAction.onclick = () => {
+        const active = cachedConversations.find(item => item.id === activeConversationId);
+        if (!active) return;
+        selectedUsernames.clear();
+        active.members.filter(name => name !== currentUsername).forEach(name => selectedUsernames.add(name));
+        renderSelectedRecipients();
+        titleInput.value = '';
+        createForm.hidden = false;
+        createSubmit.textContent = 'Create group';
+        chatMenu.open = false;
+        recipientInput.focus();
+      };
+      const viewProfileAction = el('button', 'View profile');
+      viewProfileAction.type = 'button';
+      viewProfileAction.onclick = () => {
+        const active = cachedConversations.find(item => item.id === activeConversationId);
+        const username = active?.members.find(name => name !== currentUsername);
+        if (username) location.hash = '#/u/' + encodeURIComponent(username);
+      };
+      const deleteChatAction = el('button', 'Delete chat from my inbox');
+      deleteChatAction.type = 'button';
+      deleteChatAction.onclick = async () => {
+        if (!activeConversationId || !confirm('Remove this chat from your inbox?')) return;
+        const response = await fetch('/api/conversations/' + activeConversationId, { method: 'DELETE' });
+        if (!response.ok) { alert('Could not remove this chat.'); return; }
+        chatMenu.open = false;
+        activeConversationId = null;
+        chat.hidden = true;
+        chat.classList.remove('chat-window');
+        await loadConversations();
+      };
+      const reportChatAction = el('button', 'Report chat');
+      reportChatAction.type = 'button';
+      reportChatAction.onclick = async () => {
+        if (!activeConversationId) return;
+        const details = prompt('Why are you reporting this chat? (optional)') || '';
+        const response = await fetch('/api/conversations/' + activeConversationId + '/report', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ details }),
+        });
+        chatMenu.open = false;
+        alert(response.ok ? 'Your report was sent to the admin team.' : 'Could not report this chat.');
+      };
+      chatMenuItems.append(makeGroupAction, viewProfileAction, deleteChatAction, reportChatAction);
+      chatMenu.append(chatMenuSummary, chatMenuItems);
+      const closeChat = el('button', '×');
+      closeChat.type = 'button'; closeChat.setAttribute('aria-label', 'Close chat');
+      closeChat.onclick = () => { chat.hidden = true; chat.classList.remove('chat-window'); };
+      chatActions.append(chatMenu, closeChat);
+      heading.append(headingTitle, chatActions);
       const messageList = el('div', undefined, 'message-list');
       messageList.append(el('p', 'Choose a conversation or start a new one.', 'message-empty'));
       const messageForm = el('form', undefined, 'message-composer');
@@ -2385,11 +2649,23 @@
       messageInput.maxLength = 2000;
       const imageInput = el('input');
       imageInput.type = 'file';
-      imageInput.accept = 'image/jpeg,image/png,image/webp,image/gif';
+      imageInput.accept = 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm';
+      const emojiButton = el('button', '☺', 'media-tool'); emojiButton.type = 'button'; emojiButton.title = 'Add emoji';
+      const gifButton = el('button', 'GIF', 'media-tool'); gifButton.type = 'button'; gifButton.title = 'Choose a GIF';
+      const plusButton = el('button', '+', 'media-tool'); plusButton.type = 'button'; plusButton.title = 'Add a photo or video';
+      const emojiTray = el('div', undefined, 'emoji-tray'); emojiTray.hidden = true;
+      ['😀', '😂', '🥰', '😍', '😊', '😉', '😭', '😎', '🤗', '❤️', '👍', '🎉', '🙏', '🔥', '✨', '💬'].forEach(emoji => {
+        const pick = el('button', emoji); pick.type = 'button';
+        pick.onclick = () => { messageInput.value += emoji; messageInput.focus(); };
+        emojiTray.append(pick);
+      });
+      emojiButton.onclick = () => { emojiTray.hidden = !emojiTray.hidden; };
+      gifButton.onclick = () => { imageInput.accept = 'image/gif'; imageInput.click(); };
+      plusButton.onclick = () => { imageInput.accept = 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm'; imageInput.click(); };
       const sendButton = el('button', 'Send');
       sendButton.type = 'submit';
-      messageForm.append(messageInput, imageInput, sendButton);
-      const messageHint = el('p', 'Images up to 10 MB. Messages refresh every 5 seconds.', 'inbox-note');
+      messageForm.append(emojiButton, gifButton, plusButton, messageInput, imageInput, sendButton);
+      const messageHint = el('p', 'Photos, GIFs, and videos up to 50 MB. Messages refresh every 5 seconds.', 'inbox-note');
       messageForm.onsubmit = async event => {
         event.preventDefault();
         if (activeConversationId === null) {
@@ -2414,13 +2690,13 @@
           if (response.ok) {
             messageInput.value = '';
             imageInput.value = '';
-            messageHint.textContent = 'Images up to 10 MB. Messages refresh every 5 seconds.';
+            messageHint.textContent = 'Photos, GIFs, and videos up to 50 MB. Messages refresh every 5 seconds.';
             await loadConversations();
             await loadMessages(activeConversationId);
           } else if (response.status === 413) {
-            messageHint.textContent = 'Picture too large (max 10 MB).';
+            messageHint.textContent = 'Media too large (max 50 MB).';
           } else if (response.status === 415) {
-            messageHint.textContent = 'Choose a JPEG, PNG, WebP, or GIF image.';
+            messageHint.textContent = 'Choose a JPEG, PNG, WebP, GIF, MP4, or WebM file.';
           } else if (response.status === 400) {
             messageHint.textContent = 'Write a message up to 2,000 characters, or attach a picture.';
           } else if (response.status === 401) {
@@ -2438,15 +2714,15 @@
           sendButton.textContent = 'Send';
         }
       };
-      chat.append(heading, messageList, messageForm, messageHint);
+      chat.append(heading, messageList, emojiTray, messageForm, messageHint);
       layout.append(sidebar, chat);
       view.append(layout);
 
       await loadConversations();
-      if (activeConversationId !== null) await loadMessages(activeConversationId);
+      if (activeConversationId !== null && !chat.hidden) await loadMessages(activeConversationId);
       inboxPoll = setInterval(async () => {
         await loadConversations();
-        if (activeConversationId !== null) await loadMessages(activeConversationId);
+        if (activeConversationId !== null && !chat.hidden) await loadMessages(activeConversationId);
       }, 5000);
 
       async function loadConversations() {
@@ -2455,45 +2731,59 @@
           conversationList.replaceChildren(el('p', 'Could not load your conversations.', 'activity-empty'));
           return;
         }
-        const conversations = await response.json();
+        cachedConversations = await response.json();
         conversationList.textContent = '';
-        if (conversations.length === 0) {
+        if (cachedConversations.length === 0) {
           conversationList.append(el('p', 'Your conversations will appear here.', 'activity-empty'));
           activeConversationId = null;
-          heading.textContent = 'Choose a conversation';
+          headingTitle.textContent = 'Choose a conversation';
           messageList.replaceChildren(el('p', 'Start a chat to say hello.', 'message-empty'));
           return;
         }
-        if (!conversations.some(conversation => conversation.id === activeConversationId)) {
-          activeConversationId = conversations[0].id;
+        if (!cachedConversations.some(conversation => conversation.id === activeConversationId)) {
+          activeConversationId = cachedConversations[0].id;
         }
-        conversations.forEach(conversation => {
+        renderConversationItems();
+        if (activeConversationId !== null) {
+          const active = cachedConversations.find(conversation => conversation.id === activeConversationId);
+          if (active) headingTitle.textContent = active.title ||
+            active.members.filter(name => name !== currentUsername).join(', ') || 'Conversation';
+        }
+      }
+
+      function renderConversationItems() {
+        conversationList.textContent = '';
+        const visibleConversations = cachedConversations.filter(conversation => {
+          if (inboxFilter === 'unread') return conversation.unread_count > 0;
+          if (inboxFilter === 'groups') return conversation.is_group;
+          if (inboxFilter === 'community') return conversation.is_group && /community/i.test(conversation.title || '');
+          return true;
+        });
+        if (visibleConversations.length === 0) {
+          conversationList.append(el('p', inboxFilter === 'unread' ? 'No unread messages.' :
+            inboxFilter === 'community' ? 'No community chats yet.' : 'No chats in this view.', 'activity-empty'));
+          return;
+        }
+        visibleConversations.forEach(conversation => {
           const item = el('button', undefined, 'conversation-item' +
             (conversation.id === activeConversationId ? ' active' : ''));
           const avatar = el('div', conversation.is_group ? 'G' : (conversation.members.find(name => name !== currentUsername) || '?')[0].toUpperCase(), 'activity-icon');
           const copy = el('span', undefined, 'conversation-copy');
           const title = conversation.title ||
             conversation.members.filter(name => name !== currentUsername).join(', ');
-          copy.append(
-            el('span', title || 'Conversation', 'conversation-name'),
-            el('span', conversation.latest_message || 'No messages yet', 'conversation-preview'),
-          );
+          const name = el('span', title || 'Conversation', 'conversation-name');
+          if (conversation.unread_count > 0) name.append(el('span', String(conversation.unread_count), 'conversation-unread'));
+          copy.append(name, el('span', conversation.latest_message || 'No messages yet', 'conversation-preview'));
           item.append(avatar, copy);
           item.onclick = async () => {
             activeConversationId = conversation.id;
-            await loadConversations();
+            chat.hidden = false;
+            chat.classList.add('chat-window');
             await loadMessages(conversation.id);
+            await loadConversations();
           };
           conversationList.append(item);
         });
-        if (activeConversationId !== null) {
-          const active = conversations.find(conversation => conversation.id === activeConversationId);
-          if (active) {
-            heading.textContent = active.title ||
-              active.members.filter(name => name !== currentUsername).join(', ') ||
-              'Conversation';
-          }
-        }
       }
 
       async function loadMessages(conversationId) {
@@ -2518,10 +2808,20 @@
           }
           if (message.body) bubble.append(el('div', message.body));
           if (message.image_url) {
-            const image = el('img');
-            image.src = message.image_url;
-            image.alt = 'Image shared by ' + message.sender;
-            bubble.append(image);
+            if (message.media_type === 'video') {
+              const video = el('video');
+              video.src = message.image_url;
+              video.controls = true;
+              video.playsInline = true;
+              video.className = 'message-media';
+              bubble.append(video);
+            } else {
+              const image = el('img');
+              image.src = message.image_url;
+              image.alt = 'Media shared by ' + message.sender;
+              image.className = 'message-media';
+              bubble.append(image);
+            }
           }
           bubble.append(el('span', new Date(message.created_at).toLocaleString(), 'message-time'));
           messageList.append(bubble);
