@@ -4,9 +4,10 @@ use argon2::{
 };
 use axum::{
     Json, Router,
-    extract::{DefaultBodyLimit, Multipart, Path, Query, State},
+    extract::{DefaultBodyLimit, Multipart, Path, Query, Request, State},
     http::{HeaderMap, StatusCode, header},
-    response::IntoResponse,
+    middleware::{self, Next},
+    response::{IntoResponse, Redirect, Response},
     routing::{delete, get, post, put},
 };
 use serde::{Deserialize, Serialize};
@@ -144,6 +145,8 @@ struct ConversationSummary {
     id: i32,
     title: Option<String>,
     is_group: bool,
+    is_owner: bool,
+    is_muted: bool,
     members: Vec<String>,
     latest_message: Option<String>,
     latest_message_at: Option<String>,
@@ -156,6 +159,19 @@ struct AdminUser {
     username: String,
     email: Option<String>,
     phone_number: Option<String>,
+    date_of_birth: Option<String>,
+    company_name: Option<String>,
+    designation: Option<String>,
+    contact_email: Option<String>,
+    instagram_handle: Option<String>,
+    facebook_handle: Option<String>,
+    tiktok_handle: Option<String>,
+    linkedin_handle: Option<String>,
+    birthday_visibility: String,
+    work_visibility: String,
+    email_visibility: String,
+    phone_visibility: String,
+    social_visibility: String,
     display_name: Option<String>,
     age: Option<i32>,
     bio: Option<String>,
@@ -176,7 +192,20 @@ struct AdminUser {
     cover_position_y: i32,
     cover_zoom: i32,
     is_admin: bool,
+    is_superadmin: bool,
     post_count: i64,
+}
+
+#[derive(Serialize, FromRow)]
+struct AdminConversation {
+    id: i32,
+    title: Option<String>,
+    is_group: bool,
+    owner: String,
+    member_count: i64,
+    is_muted: bool,
+    latest_message: Option<String>,
+    created_at: String,
 }
 
 #[derive(Serialize, FromRow)]
@@ -212,6 +241,7 @@ struct AdminPost {
 #[derive(Serialize)]
 struct AdminOverview {
     users: Vec<AdminUser>,
+    conversations: Vec<AdminConversation>,
     posts: Vec<AdminPost>,
     reports: Vec<AdminReport>,
     chat_reports: Vec<AdminChatReport>,
@@ -221,11 +251,15 @@ struct AdminOverview {
     total_messages: i64,
     total_groups: i64,
     total_reports: i64,
+    total_conversations: i64,
+    disabled_users: i64,
+    is_superadmin: bool,
 }
 
 #[derive(Serialize, FromRow)]
 struct AdminConfig {
     allow_signups: bool,
+    app_enabled: bool,
 }
 
 #[derive(Deserialize)]
@@ -240,7 +274,142 @@ struct ChatReportRequest {
 
 #[derive(Deserialize)]
 struct AdminConfigUpdate {
-    allow_signups: bool,
+    allow_signups: Option<bool>,
+    app_enabled: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct AdminRoleUpdate {
+    is_admin: bool,
+}
+
+#[derive(Deserialize)]
+struct AdminConversationUpdate {
+    is_muted: bool,
+}
+
+#[derive(Deserialize)]
+struct MediaSearchQuery {
+    q: String,
+    kind: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct GiphyResponse {
+    data: Vec<GiphyItem>,
+}
+
+#[derive(Deserialize)]
+struct GiphyItem {
+    title: String,
+    images: GiphyImages,
+}
+
+#[derive(Deserialize)]
+struct GiphyImages {
+    fixed_width: Option<GiphyImage>,
+    fixed_width_small: Option<GiphyImage>,
+    original: Option<GiphyImage>,
+}
+
+#[derive(Deserialize)]
+struct GiphyImage {
+    url: String,
+}
+
+#[derive(Serialize)]
+struct ChatMediaResult {
+    title: String,
+    preview_url: String,
+    media_url: String,
+    source_url: String,
+}
+
+#[derive(Deserialize)]
+struct PhotonResponse {
+    features: Vec<PhotonFeature>,
+}
+
+#[derive(Deserialize)]
+struct PhotonFeature {
+    properties: PhotonProperties,
+}
+
+#[derive(Deserialize)]
+struct PhotonProperties {
+    name: Option<String>,
+    city: Option<String>,
+    state: Option<String>,
+    country: Option<String>,
+}
+
+#[derive(Serialize)]
+struct LocationSuggestion {
+    label: String,
+}
+
+#[derive(Serialize, FromRow)]
+struct FollowedPerson {
+    username: String,
+    display_name: Option<String>,
+    avatar_url: Option<String>,
+    is_favorite: bool,
+}
+
+#[derive(Serialize, FromRow)]
+struct CommunitySummary {
+    id: i32,
+    name: String,
+    description: String,
+    owner: Option<String>,
+    is_member: bool,
+    is_owner: bool,
+    member_count: i64,
+    created_at: String,
+}
+
+#[derive(Serialize, FromRow)]
+struct CommunityPost {
+    id: i64,
+    username: String,
+    title: String,
+    body: String,
+    created_at: String,
+    comment_count: i64,
+    can_delete: bool,
+}
+
+#[derive(Serialize, FromRow)]
+struct CommunityComment {
+    id: i64,
+    username: String,
+    body: String,
+    created_at: String,
+    can_delete: bool,
+}
+
+#[derive(Serialize, FromRow)]
+struct CommunityMember {
+    id: i32,
+    username: String,
+    is_owner: bool,
+}
+
+#[derive(Deserialize)]
+struct NewCommunity {
+    name: String,
+    description: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct CommunityPostInput {
+    title: String,
+    body: String,
+}
+
+#[derive(Deserialize)]
+struct CommunityCommentInput {
+    body: String,
 }
 
 #[derive(Serialize, FromRow)]
@@ -251,6 +420,14 @@ struct DirectMessage {
     image_url: Option<String>,
     media_type: Option<String>,
     created_at: String,
+    can_delete: bool,
+}
+
+#[derive(Serialize, FromRow)]
+struct GroupMember {
+    id: i32,
+    username: String,
+    is_owner: bool,
 }
 
 #[derive(Serialize, FromRow)]
@@ -289,7 +466,21 @@ struct ProfileRow {
     display_name: Option<String>,
     bio: Option<String>,
     age: Option<i32>,
+    date_of_birth: Option<String>,
+    birthday_visibility: String,
     location: Option<String>,
+    company_name: Option<String>,
+    designation: Option<String>,
+    work_visibility: String,
+    contact_email: Option<String>,
+    email_visibility: String,
+    phone_number: Option<String>,
+    phone_visibility: String,
+    instagram_handle: Option<String>,
+    facebook_handle: Option<String>,
+    tiktok_handle: Option<String>,
+    linkedin_handle: Option<String>,
+    social_visibility: String,
     mood: Option<String>,
     interests: Option<String>,
     relationship_status: Option<String>,
@@ -308,7 +499,21 @@ struct Profile {
     display_name: Option<String>,
     bio: Option<String>,
     age: Option<i32>,
+    date_of_birth: Option<String>,
+    birthday_visibility: String,
     location: Option<String>,
+    company_name: Option<String>,
+    designation: Option<String>,
+    work_visibility: String,
+    contact_email: Option<String>,
+    email_visibility: String,
+    phone_number: Option<String>,
+    phone_visibility: String,
+    instagram_handle: Option<String>,
+    facebook_handle: Option<String>,
+    tiktok_handle: Option<String>,
+    linkedin_handle: Option<String>,
+    social_visibility: String,
     mood: Option<String>,
     interests: Option<String>,
     relationship_status: Option<String>,
@@ -333,7 +538,21 @@ struct ProfileUpdate {
     display_name: Option<String>,
     bio: Option<String>,
     age: Option<i32>,
+    date_of_birth: Option<String>,
+    birthday_visibility: Option<String>,
     location: Option<String>,
+    company_name: Option<String>,
+    designation: Option<String>,
+    work_visibility: Option<String>,
+    contact_email: Option<String>,
+    email_visibility: Option<String>,
+    phone_number: Option<String>,
+    phone_visibility: Option<String>,
+    instagram_handle: Option<String>,
+    facebook_handle: Option<String>,
+    tiktok_handle: Option<String>,
+    linkedin_handle: Option<String>,
+    social_visibility: Option<String>,
     mood: Option<String>,
     interests: Option<String>,
     relationship_status: Option<String>,
@@ -383,6 +602,11 @@ struct NewConversation {
 }
 
 #[derive(Deserialize)]
+struct GroupTitleRequest {
+    title: String,
+}
+
+#[derive(Deserialize)]
 struct UserSearchQuery {
     q: String,
 }
@@ -390,6 +614,7 @@ struct UserSearchQuery {
 #[derive(Serialize, FromRow)]
 struct UserSearchResult {
     username: String,
+    display_name: Option<String>,
     avatar_url: Option<String>,
 }
 
@@ -496,6 +721,7 @@ struct SignupRequest {
 struct UserInfo {
     username: String,
     is_admin: bool,
+    is_superadmin: bool,
     cover_image_url: Option<String>,
     cover_position_x: i32,
     cover_position_y: i32,
@@ -1021,6 +1247,7 @@ async fn signup(
         Json(UserInfo {
             username: c.username,
             is_admin: false,
+            is_superadmin: false,
             cover_image_url: None,
             cover_position_x: 50,
             cover_position_y: 50,
@@ -1033,8 +1260,8 @@ async fn login(
     State(pool): State<PgPool>,
     Json(c): Json<Credentials>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let row: Option<(i32, Option<String>, Option<String>, i32, i32, i32, bool)> = sqlx::query_as(
-        "SELECT id, password_hash, cover_image_url, cover_position_x, cover_position_y, cover_zoom, is_admin
+    let row: Option<(i32, Option<String>, Option<String>, i32, i32, i32, bool, bool)> = sqlx::query_as(
+        "SELECT id, password_hash, cover_image_url, cover_position_x, cover_position_y, cover_zoom, is_admin, is_superadmin
              FROM users WHERE username = $1 AND account_enabled = TRUE",
     )
     .bind(&c.username)
@@ -1046,10 +1273,10 @@ async fn login(
     })?;
 
     // Same 401 for "no such user" and "wrong password", so attackers can't tell which.
-    let (user_id, stored_hash, cover_image_url, cover_position_x, cover_position_y, cover_zoom, is_admin) =
+    let (user_id, stored_hash, cover_image_url, cover_position_x, cover_position_y, cover_zoom, is_admin, is_superadmin) =
         match row {
-            Some((id, Some(h), cover_image_url, position_x, position_y, zoom, is_admin)) => {
-                (id, h, cover_image_url, position_x, position_y, zoom, is_admin)
+            Some((id, Some(h), cover_image_url, position_x, position_y, zoom, is_admin, is_superadmin)) => {
+                (id, h, cover_image_url, position_x, position_y, zoom, is_admin, is_superadmin)
             }
             _ => return Err(StatusCode::UNAUTHORIZED),
         };
@@ -1065,6 +1292,7 @@ async fn login(
         Json(UserInfo {
             username: c.username,
             is_admin,
+            is_superadmin,
             cover_image_url,
             cover_position_x,
             cover_position_y,
@@ -1098,8 +1326,8 @@ fn checkin_category_is_valid(category: &str) -> bool {
 
 async fn me(State(pool): State<PgPool>, headers: HeaderMap) -> Result<Json<UserInfo>, StatusCode> {
     let token = session_token(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
-    let row: Option<(String, Option<String>, i32, i32, i32, bool)> = sqlx::query_as(
-        "SELECT u.username, u.cover_image_url, u.cover_position_x, u.cover_position_y, u.cover_zoom, u.is_admin
+    let row: Option<(String, Option<String>, i32, i32, i32, bool, bool)> = sqlx::query_as(
+        "SELECT u.username, u.cover_image_url, u.cover_position_x, u.cover_position_y, u.cover_zoom, u.is_admin, u.is_superadmin
          FROM sessions s JOIN users u ON u.id = s.user_id
          WHERE s.token = $1 AND s.created_at > now() - interval '7 days' AND u.account_enabled",
     )
@@ -1112,10 +1340,11 @@ async fn me(State(pool): State<PgPool>, headers: HeaderMap) -> Result<Json<UserI
     })?;
 
     match row {
-        Some((username, cover_image_url, cover_position_x, cover_position_y, cover_zoom, is_admin)) => {
+        Some((username, cover_image_url, cover_position_x, cover_position_y, cover_zoom, is_admin, is_superadmin)) => {
             Ok(Json(UserInfo {
                 username,
                 is_admin,
+                is_superadmin,
                 cover_image_url,
                 cover_position_x,
                 cover_position_y,
@@ -1174,13 +1403,91 @@ async fn require_admin(pool: &PgPool, headers: &HeaderMap) -> Result<i32, Status
     Ok(user_id)
 }
 
+async fn require_superadmin(pool: &PgPool, headers: &HeaderMap) -> Result<i32, StatusCode> {
+    let user_id = current_user_id(pool, headers).await?;
+    let is_superadmin: bool = sqlx::query_scalar("SELECT is_superadmin FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| {
+            eprintln!("superadmin role lookup failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if !is_superadmin {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    Ok(user_id)
+}
+
+async fn app_status(State(pool): State<PgPool>) -> Result<Json<bool>, StatusCode> {
+    let enabled = sqlx::query_scalar(
+        "SELECT COALESCE((SELECT value = 'true' FROM app_settings WHERE key = 'app_enabled'), TRUE)",
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("app status lookup failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(enabled))
+}
+
+async fn app_enabled_guard(
+    State(pool): State<PgPool>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let path = request.uri().path();
+    if matches!(path, "/api/login" | "/api/me" | "/api/status" | "/api/logout") {
+        return next.run(request).await;
+    }
+    let enabled: Result<bool, sqlx::Error> = sqlx::query_scalar(
+        "SELECT COALESCE((SELECT value = 'true' FROM app_settings WHERE key = 'app_enabled'), TRUE)",
+    )
+    .fetch_one(&pool)
+    .await;
+    match enabled {
+        Ok(true) => return next.run(request).await,
+        Ok(false) => {}
+        Err(error) => {
+            eprintln!("app access status lookup failed: {error}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    }
+    let token = session_token(request.headers());
+    let is_superadmin = if let Some(token) = token {
+        sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = $1 AND s.created_at > now() - interval '7 days' AND u.account_enabled AND u.is_superadmin)",
+        )
+        .bind(token)
+        .fetch_one(&pool)
+        .await
+        .unwrap_or(false)
+    } else {
+        false
+    };
+    if is_superadmin {
+        next.run(request).await
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE.into_response()
+    }
+}
+
 async fn admin_overview(
     State(pool): State<PgPool>,
     headers: HeaderMap,
 ) -> Result<Json<AdminOverview>, StatusCode> {
-    require_admin(&pool, &headers).await?;
+    let admin_id = require_admin(&pool, &headers).await?;
+    let is_superadmin: bool = sqlx::query_scalar("SELECT is_superadmin FROM users WHERE id = $1")
+        .bind(admin_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| {
+            eprintln!("admin privilege lookup failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     let config = sqlx::query_as::<_, AdminConfig>(
-        "SELECT value = 'true' AS allow_signups FROM app_settings WHERE key = 'allow_signups'",
+        "SELECT (SELECT value = 'true' FROM app_settings WHERE key = 'allow_signups') AS allow_signups, COALESCE((SELECT value = 'true' FROM app_settings WHERE key = 'app_enabled'), TRUE) AS app_enabled",
     )
     .fetch_one(&pool)
     .await
@@ -1189,13 +1496,18 @@ async fn admin_overview(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     let users = sqlx::query_as::<_, AdminUser>(
-        r#"SELECT u.id, u.username, u.email, u.phone_number, u.display_name,
-                  u.age, u.bio, u.location, u.mood, u.interests,
+        r#"SELECT u.id, u.username, u.email, u.phone_number,
+                  to_char(u.date_of_birth, 'YYYY-MM-DD') AS date_of_birth,
+                  u.company_name, u.designation, u.contact_email,
+                  u.instagram_handle, u.facebook_handle, u.tiktok_handle, u.linkedin_handle,
+                  u.birthday_visibility, u.work_visibility, u.email_visibility,
+                  u.phone_visibility, u.social_visibility,
+                  u.display_name, u.age, u.bio, u.location, u.mood, u.interests,
                   u.relationship_status, u.avatar_url, u.cover_image_url,
                   to_char(u.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
                   u.account_enabled, u.profile_visibility, u.message_privacy,
                   u.show_activity_status, u.keep_profile_visitors, u.notify_mentions,
-                  u.cover_position_x, u.cover_position_y, u.cover_zoom, u.is_admin,
+                  u.cover_position_x, u.cover_position_y, u.cover_zoom, u.is_admin, u.is_superadmin,
                   (SELECT COUNT(*) FROM posts p WHERE p.user_id = u.id) AS post_count
            FROM users u ORDER BY u.created_at DESC, u.id DESC"#,
     )
@@ -1203,6 +1515,21 @@ async fn admin_overview(
     .await
     .map_err(|e| {
         eprintln!("admin users query failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let conversations = sqlx::query_as::<_, AdminConversation>(
+        r#"SELECT c.id, c.title, c.is_group, owner.username AS owner,
+                  (SELECT COUNT(*) FROM conversation_members cm WHERE cm.conversation_id = c.id) AS member_count,
+                  c.is_muted,
+                  (SELECT NULLIF(m.body, '') FROM direct_messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS latest_message,
+                  to_char(c.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at
+           FROM conversations c JOIN users owner ON owner.id = c.created_by
+           ORDER BY c.created_at DESC, c.id DESC LIMIT 500"#,
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("admin conversations query failed: {e}");
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     let posts = sqlx::query_as::<_, AdminPost>(
@@ -1245,11 +1572,13 @@ async fn admin_overview(
         eprintln!("admin chat reports query failed: {e}");
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
-    let (total_users, total_posts, total_messages, total_groups, total_reports): (i64, i64, i64, i64, i64) = sqlx::query_as(
+    let (total_users, total_posts, total_messages, total_groups, total_reports, total_conversations, disabled_users): (i64, i64, i64, i64, i64, i64, i64) = sqlx::query_as(
         r#"SELECT (SELECT COUNT(*) FROM users), (SELECT COUNT(*) FROM posts),
                   (SELECT COUNT(*) FROM direct_messages),
                   (SELECT COUNT(*) FROM conversations WHERE is_group),
-                  (SELECT (SELECT COUNT(*) FROM post_reports) + (SELECT COUNT(*) FROM conversation_reports))"#,
+                  (SELECT (SELECT COUNT(*) FROM post_reports) + (SELECT COUNT(*) FROM conversation_reports)),
+                  (SELECT COUNT(*) FROM conversations),
+                  (SELECT COUNT(*) FROM users WHERE NOT account_enabled)"#,
     )
     .fetch_one(&pool)
     .await
@@ -1259,6 +1588,7 @@ async fn admin_overview(
     })?;
     Ok(Json(AdminOverview {
         users,
+        conversations,
         posts,
         reports,
         chat_reports,
@@ -1268,6 +1598,9 @@ async fn admin_overview(
         total_messages,
         total_groups,
         total_reports,
+        total_conversations,
+        disabled_users,
+        is_superadmin,
     }))
 }
 
@@ -1277,17 +1610,263 @@ async fn admin_update_config(
     Json(update): Json<AdminConfigUpdate>,
 ) -> Result<StatusCode, StatusCode> {
     require_admin(&pool, &headers).await?;
-    sqlx::query(
-        "INSERT INTO app_settings (key, value) VALUES ('allow_signups', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()",
+    if update.app_enabled.is_some() {
+        require_superadmin(&pool, &headers).await?;
+    }
+    if let Some(allow_signups) = update.allow_signups {
+        sqlx::query("INSERT INTO app_settings (key, value) VALUES ('allow_signups', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()")
+            .bind(if allow_signups { "true" } else { "false" })
+            .execute(&pool)
+            .await
+            .map_err(|e| { eprintln!("signup configuration update failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?;
+    }
+    if let Some(app_enabled) = update.app_enabled {
+        sqlx::query("INSERT INTO app_settings (key, value) VALUES ('app_enabled', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()")
+            .bind(if app_enabled { "true" } else { "false" })
+            .execute(&pool)
+            .await
+            .map_err(|e| { eprintln!("app state update failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?;
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn admin_update_role(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(target_id): Path<i32>,
+    Json(update): Json<AdminRoleUpdate>,
+) -> Result<StatusCode, StatusCode> {
+    let superadmin_id = require_superadmin(&pool, &headers).await?;
+    if target_id == superadmin_id {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let result = sqlx::query(
+        "UPDATE users SET is_admin = $1, is_superadmin = CASE WHEN $1 THEN is_superadmin ELSE FALSE END WHERE id = $2",
     )
-    .bind(if update.allow_signups { "true" } else { "false" })
+    .bind(update.is_admin)
+    .bind(target_id)
     .execute(&pool)
     .await
     .map_err(|e| {
-        eprintln!("admin configuration update failed: {e}");
+        eprintln!("admin role update failed: {e}");
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn admin_delete_user(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(target_id): Path<i32>,
+) -> Result<StatusCode, StatusCode> {
+    let superadmin_id = require_superadmin(&pool, &headers).await?;
+    if target_id == superadmin_id {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let result = sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(target_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| {
+            eprintln!("admin user removal failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn admin_delete_conversation(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(conversation_id): Path<i32>,
+) -> Result<StatusCode, StatusCode> {
+    require_superadmin(&pool, &headers).await?;
+    let result = sqlx::query("DELETE FROM conversations WHERE id = $1")
+        .bind(conversation_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| {
+            eprintln!("admin conversation removal failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn admin_update_conversation(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(conversation_id): Path<i32>,
+    Json(update): Json<AdminConversationUpdate>,
+) -> Result<StatusCode, StatusCode> {
+    require_admin(&pool, &headers).await?;
+    let result = sqlx::query("UPDATE conversations SET is_muted = $1 WHERE id = $2")
+        .bind(update.is_muted)
+        .bind(conversation_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| {
+            eprintln!("admin conversation moderation failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn search_chat_media(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Query(query): Query<MediaSearchQuery>,
+) -> Result<Json<Vec<ChatMediaResult>>, StatusCode> {
+    current_user_id(&pool, &headers).await?;
+    let term = query.q.trim();
+    if term.is_empty() || term.chars().count() > 80 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let is_sticker = query.kind.as_deref() == Some("stickers");
+    let Ok(api_key) = std::env::var("GIPHY_API_KEY") else {
+        return search_commons_chat_media(term, is_sticker).await.map(Json);
+    };
+    let endpoint = if is_sticker { "stickers" } else { "gifs" };
+    let mut request_url = reqwest::Url::parse(&format!("https://api.giphy.com/v1/{endpoint}/search"))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    request_url.query_pairs_mut()
+        .append_pair("api_key", &api_key)
+        .append_pair("q", term)
+        .append_pair("limit", "24")
+        .append_pair("rating", "pg-13");
+    let response = reqwest::Client::new()
+        .get(request_url)
+        .send()
+        .await
+        .map_err(|e| {
+            eprintln!("GIPHY search request failed: {e}");
+            StatusCode::BAD_GATEWAY
+        })?;
+    if !response.status().is_success() {
+        eprintln!("GIPHY search returned status {}", response.status());
+        return Err(StatusCode::BAD_GATEWAY);
+    }
+    let response_bytes = response.bytes().await.map_err(|e| {
+        eprintln!("GIPHY response read failed: {e}");
+        StatusCode::BAD_GATEWAY
+    })?;
+    let results = serde_json::from_slice::<GiphyResponse>(&response_bytes)
+        .map_err(|e| {
+            eprintln!("GIPHY response decode failed: {e}");
+            StatusCode::BAD_GATEWAY
+        })?
+        .data
+        .into_iter()
+        .filter_map(|item| {
+            let preview = item.images.fixed_width_small.or(item.images.fixed_width)?;
+            let media = item.images.original?;
+            Some(ChatMediaResult { title: item.title, preview_url: preview.url, media_url: media.url, source_url: "https://giphy.com/".to_string() })
+        })
+        .collect();
+    Ok(Json(results))
+}
+
+async fn search_commons_chat_media(term: &str, is_sticker: bool) -> Result<Vec<ChatMediaResult>, StatusCode> {
+    let file_type = if is_sticker { "filemime:image/png" } else { "filemime:image/gif" };
+    let mut url = reqwest::Url::parse("https://commons.wikimedia.org/w/api.php")
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    url.query_pairs_mut()
+        .append_pair("action", "query")
+        .append_pair("generator", "search")
+        .append_pair("gsrsearch", &format!("{} {file_type}", term))
+        .append_pair("gsrnamespace", "6")
+        .append_pair("gsrlimit", "24")
+        .append_pair("prop", "imageinfo")
+        .append_pair("iiprop", "url")
+        .append_pair("iiurlwidth", "250")
+        .append_pair("format", "json");
+    let response = reqwest::Client::new()
+        .get(url)
+        .header(reqwest::header::USER_AGENT, "CommunityInstaClone/1.0 (chat media search)")
+        .send()
+        .await
+        .map_err(|e| { eprintln!("Wikimedia chat media search failed: {e}"); StatusCode::BAD_GATEWAY })?;
+    if !response.status().is_success() { return Err(StatusCode::BAD_GATEWAY); }
+    let bytes = response.bytes().await
+        .map_err(|e| { eprintln!("Wikimedia chat media response read failed: {e}"); StatusCode::BAD_GATEWAY })?;
+    let data = serde_json::from_slice::<serde_json::Value>(&bytes)
+        .map_err(|e| { eprintln!("Wikimedia chat media response decode failed: {e}"); StatusCode::BAD_GATEWAY })?;
+    let results = data.get("query").and_then(|q| q.get("pages")).and_then(|p| p.as_object())
+        .into_iter().flatten().filter_map(|(_, page)| {
+            let info = page.get("imageinfo")?.as_array()?.first()?;
+            let media_url = info.get("url")?.as_str()?;
+            let preview_url = info.get("thumburl").and_then(|v| v.as_str()).unwrap_or(media_url);
+            let source_url = info.get("descriptionurl")?.as_str()?;
+            Some(ChatMediaResult {
+                title: page.get("title").and_then(|v| v.as_str()).unwrap_or("Community media").to_string(),
+                preview_url: preview_url.to_string(),
+                media_url: media_url.to_string(),
+                source_url: source_url.to_string(),
+            })
+        }).collect();
+    Ok(results)
+}
+
+async fn search_locations(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Query(query): Query<MediaSearchQuery>,
+) -> Result<Json<Vec<LocationSuggestion>>, StatusCode> {
+    current_user_id(&pool, &headers).await?;
+    let term = query.q.trim();
+    if term.chars().count() < 2 || term.chars().count() > 100 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let mut url = reqwest::Url::parse("https://photon.komoot.io/api/")
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    url.query_pairs_mut()
+        .append_pair("q", term)
+        .append_pair("limit", "8")
+        .append_pair("lang", "en");
+    let response = reqwest::Client::new()
+        .get(url)
+        .header(reqwest::header::USER_AGENT, "CommunityInstaClone/1.0 profile-location-search")
+        .send()
+        .await
+        .map_err(|e| {
+            eprintln!("location lookup request failed: {e}");
+            StatusCode::BAD_GATEWAY
+        })?;
+    if !response.status().is_success() {
+        return Err(StatusCode::BAD_GATEWAY);
+    }
+    let bytes = response.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+    let results = serde_json::from_slice::<PhotonResponse>(&bytes)
+        .map_err(|e| {
+            eprintln!("location lookup response decode failed: {e}");
+            StatusCode::BAD_GATEWAY
+        })?
+        .features
+        .into_iter()
+        .filter_map(|feature| {
+            let props = feature.properties;
+            let place = props.name.or(props.city)?;
+            let mut parts = vec![place];
+            if let Some(state) = props.state.filter(|value| !parts.contains(value)) {
+                parts.push(state);
+            }
+            if let Some(country) = props.country.filter(|value| !parts.contains(value)) {
+                parts.push(country);
+            }
+            Some(LocationSuggestion { label: parts.join(", ") })
+        })
+        .collect();
+    Ok(Json(results))
 }
 
 async fn admin_update_user(
@@ -2162,7 +2741,66 @@ async fn profile(
                u.display_name,
                u.bio,
                u.age,
+               CASE WHEN u.birthday_visibility = 'everyone' OR u.id = $2 OR
+                    (u.birthday_visibility = 'friends' AND EXISTS (
+                      SELECT 1 FROM follows a WHERE a.follower_id = $2 AND a.followee_id = u.id
+                    ) AND EXISTS (
+                      SELECT 1 FROM follows b WHERE b.follower_id = u.id AND b.followee_id = $2
+                    )) THEN to_char(u.date_of_birth, 'YYYY-MM-DD') END AS date_of_birth,
+               u.birthday_visibility,
                u.location,
+               CASE WHEN u.work_visibility = 'everyone' OR u.id = $2 OR
+                    (u.work_visibility = 'friends' AND EXISTS (
+                      SELECT 1 FROM follows a WHERE a.follower_id = $2 AND a.followee_id = u.id
+                    ) AND EXISTS (
+                      SELECT 1 FROM follows b WHERE b.follower_id = u.id AND b.followee_id = $2
+                    )) THEN u.company_name END AS company_name,
+               CASE WHEN u.work_visibility = 'everyone' OR u.id = $2 OR
+                    (u.work_visibility = 'friends' AND EXISTS (
+                      SELECT 1 FROM follows a WHERE a.follower_id = $2 AND a.followee_id = u.id
+                    ) AND EXISTS (
+                      SELECT 1 FROM follows b WHERE b.follower_id = u.id AND b.followee_id = $2
+                    )) THEN u.designation END AS designation,
+               u.work_visibility,
+               CASE WHEN u.email_visibility = 'everyone' OR u.id = $2 OR
+                    (u.email_visibility = 'friends' AND EXISTS (
+                      SELECT 1 FROM follows a WHERE a.follower_id = $2 AND a.followee_id = u.id
+                    ) AND EXISTS (
+                      SELECT 1 FROM follows b WHERE b.follower_id = u.id AND b.followee_id = $2
+                    )) THEN u.contact_email END AS contact_email,
+               u.email_visibility,
+               CASE WHEN u.phone_visibility = 'everyone' OR u.id = $2 OR
+                    (u.phone_visibility = 'friends' AND EXISTS (
+                      SELECT 1 FROM follows a WHERE a.follower_id = $2 AND a.followee_id = u.id
+                    ) AND EXISTS (
+                      SELECT 1 FROM follows b WHERE b.follower_id = u.id AND b.followee_id = $2
+                    )) THEN u.phone_number END AS phone_number,
+               u.phone_visibility,
+               CASE WHEN u.social_visibility = 'everyone' OR u.id = $2 OR
+                    (u.social_visibility = 'friends' AND EXISTS (
+                      SELECT 1 FROM follows a WHERE a.follower_id = $2 AND a.followee_id = u.id
+                    ) AND EXISTS (
+                      SELECT 1 FROM follows b WHERE b.follower_id = u.id AND b.followee_id = $2
+                    )) THEN u.instagram_handle END AS instagram_handle,
+               CASE WHEN u.social_visibility = 'everyone' OR u.id = $2 OR
+                    (u.social_visibility = 'friends' AND EXISTS (
+                      SELECT 1 FROM follows a WHERE a.follower_id = $2 AND a.followee_id = u.id
+                    ) AND EXISTS (
+                      SELECT 1 FROM follows b WHERE b.follower_id = u.id AND b.followee_id = $2
+                    )) THEN u.facebook_handle END AS facebook_handle,
+               CASE WHEN u.social_visibility = 'everyone' OR u.id = $2 OR
+                    (u.social_visibility = 'friends' AND EXISTS (
+                      SELECT 1 FROM follows a WHERE a.follower_id = $2 AND a.followee_id = u.id
+                    ) AND EXISTS (
+                      SELECT 1 FROM follows b WHERE b.follower_id = u.id AND b.followee_id = $2
+                    )) THEN u.tiktok_handle END AS tiktok_handle,
+               CASE WHEN u.social_visibility = 'everyone' OR u.id = $2 OR
+                    (u.social_visibility = 'friends' AND EXISTS (
+                      SELECT 1 FROM follows a WHERE a.follower_id = $2 AND a.followee_id = u.id
+                    ) AND EXISTS (
+                      SELECT 1 FROM follows b WHERE b.follower_id = u.id AND b.followee_id = $2
+                    )) THEN u.linkedin_handle END AS linkedin_handle,
+               u.social_visibility,
                u.mood,
                u.interests,
                u.relationship_status,
@@ -2233,7 +2871,21 @@ async fn profile(
         display_name: row.display_name,
         bio: row.bio,
         age: row.age,
+        date_of_birth: row.date_of_birth,
+        birthday_visibility: row.birthday_visibility,
         location: row.location,
+        company_name: row.company_name,
+        designation: row.designation,
+        work_visibility: row.work_visibility,
+        contact_email: row.contact_email,
+        email_visibility: row.email_visibility,
+        phone_number: row.phone_number,
+        phone_visibility: row.phone_visibility,
+        instagram_handle: row.instagram_handle,
+        facebook_handle: row.facebook_handle,
+        tiktok_handle: row.tiktok_handle,
+        linkedin_handle: row.linkedin_handle,
+        social_visibility: row.social_visibility,
         mood: row.mood,
         interests: row.interests,
         relationship_status: row.relationship_status,
@@ -2613,6 +3265,8 @@ async fn list_conversations(
         SELECT c.id,
                c.title,
                c.is_group,
+               (c.created_by = $1) AS is_owner,
+               c.is_muted,
                ARRAY(
                    SELECT u.username
                    FROM conversation_members cm
@@ -3069,11 +3723,11 @@ async fn search_users(
 ) -> Result<Json<Vec<UserSearchResult>>, StatusCode> {
     let user_id = current_user_id(&pool, &headers).await?;
     let search = query.q.trim();
-    if search.chars().count() < 2 || search.len() > 30 || !search.chars().all(username_character) {
+    if search.chars().count() < 2 || search.chars().count() > 50 {
         return Err(StatusCode::BAD_REQUEST);
     }
     let users = sqlx::query_as::<_, UserSearchResult>(
-        "SELECT username, avatar_url FROM users
+        "SELECT username, display_name, avatar_url FROM users
          WHERE id <> $1
            AND account_enabled
            AND (
@@ -3086,14 +3740,15 @@ async fn search_users(
                    )
                )
            )
-           AND LOWER(LEFT(username, char_length($2))) = LOWER($2)
+           AND (LOWER(LEFT(username, char_length($2))) = LOWER($2)
+                OR STRPOS(LOWER(COALESCE(display_name, '')), LOWER($2)) > 0)
            AND NOT EXISTS (
                SELECT 1 FROM user_blocks b
                WHERE (b.blocker_id = $1 AND b.blocked_id = users.id)
                   OR (b.blocker_id = users.id AND b.blocked_id = $1)
            )
-         ORDER BY username
-         LIMIT 10",
+         ORDER BY CASE WHEN LOWER(LEFT(username, char_length($2))) = LOWER($2) THEN 0 ELSE 1 END, username
+         LIMIT 50",
     )
     .bind(user_id)
     .bind(search)
@@ -3140,20 +3795,25 @@ async fn list_messages(
         SELECT m.id,
                u.username AS "sender",
                m.body,
-               CASE WHEN m.image_path IS NOT NULL
+               CASE WHEN m.image_path LIKE 'https://%.giphy.com/%' OR m.image_path LIKE 'https://%.wikimedia.org/%'
+                    THEN m.image_path
+                    WHEN m.image_path IS NOT NULL
                     THEN '/api/messages/' || m.id || '/image'
                END AS image_url,
                CASE WHEN RIGHT(m.image_path, 4) = '.mp4' OR RIGHT(m.image_path, 5) = '.webm'
                     THEN 'video' ELSE 'image' END AS media_type,
-               to_char(m.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at
+               to_char(m.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
+               (m.sender_id = $2 OR (c.is_group AND c.created_by = $2)) AS can_delete
         FROM direct_messages m
         JOIN users u ON u.id = m.sender_id
+        JOIN conversations c ON c.id = m.conversation_id
         WHERE m.conversation_id = $1
         ORDER BY m.id DESC
         LIMIT 100
         "#,
     )
     .bind(conversation_id)
+    .bind(user_id)
     .fetch_all(&pool)
     .await
     .map_err(|e| {
@@ -3183,6 +3843,17 @@ async fn send_message(
     })?;
     if !is_member {
         return Err(StatusCode::NOT_FOUND);
+    }
+    let is_muted: bool = sqlx::query_scalar("SELECT is_muted FROM conversations WHERE id = $1")
+        .bind(conversation_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| {
+            eprintln!("conversation moderation lookup failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if is_muted {
+        return Err(StatusCode::FORBIDDEN);
     }
     let other_member_blocks_sender: bool = sqlx::query_scalar(
         r#"
@@ -3225,6 +3896,7 @@ async fn send_message(
 
     let mut body = String::new();
     let mut image: Option<(Vec<u8>, &'static str)> = None;
+    let mut remote_media_url: Option<String> = None;
     while let Some(field) = multipart
         .next_field()
         .await
@@ -3232,6 +3904,20 @@ async fn send_message(
     {
         match field.name() {
             Some("body") => body = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?,
+            Some("remote_media_url") => {
+                let value = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+                let parsed = reqwest::Url::parse(&value).map_err(|_| StatusCode::BAD_REQUEST)?;
+                let host = parsed.host_str().unwrap_or_default();
+                if parsed.scheme() != "https"
+                    || !(host == "giphy.com" || host.ends_with(".giphy.com")
+                        || host == "upload.wikimedia.org" || host == "thumb.wikimedia.org"
+                        || host == "commons.wikimedia.org")
+                    || value.len() > 2048
+                {
+                    return Err(StatusCode::BAD_REQUEST);
+                }
+                remote_media_url = Some(value);
+            }
             Some("image") => {
                 let bytes = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
                 if bytes.len() > 50 * 1024 * 1024 {
@@ -3246,10 +3932,12 @@ async fn send_message(
         }
     }
     let body = body.trim();
-    if body.chars().count() > 2000 || (body.is_empty() && image.is_none()) {
+    if body.chars().count() > 2000 || (body.is_empty() && image.is_none() && remote_media_url.is_none()) {
         return Err(StatusCode::BAD_REQUEST);
     }
-    let image_path = if let Some((bytes, extension)) = image {
+    let image_path = if let Some(url) = remote_media_url {
+        Some(url)
+    } else if let Some((bytes, extension)) = image {
         Some(save_private_image(&bytes, extension).await?)
     } else {
         None
@@ -3264,12 +3952,15 @@ async fn send_message(
         SELECT inserted.id,
                u.username AS "sender",
                inserted.body,
-               CASE WHEN inserted.image_path IS NOT NULL
+        CASE WHEN inserted.image_path LIKE 'https://%.giphy.com/%' OR inserted.image_path LIKE 'https://%.wikimedia.org/%'
+                    THEN inserted.image_path
+                    WHEN inserted.image_path IS NOT NULL
                     THEN '/api/messages/' || inserted.id || '/image'
                END AS image_url,
                CASE WHEN RIGHT(inserted.image_path, 4) = '.mp4' OR RIGHT(inserted.image_path, 5) = '.webm'
                     THEN 'video' ELSE 'image' END AS media_type,
-               to_char(inserted.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at
+               to_char(inserted.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
+               TRUE AS can_delete
         FROM inserted JOIN users u ON u.id = inserted.sender_id
         "#,
     )
@@ -3282,7 +3973,7 @@ async fn send_message(
     match message {
         Ok(message) => Ok((StatusCode::CREATED, Json(message))),
         Err(e) => {
-            if let Some(image_path) = image_path {
+            if let Some(image_path) = image_path.filter(|path| !path.starts_with("https://")) {
                 remove_private_image(&image_path).await;
             }
             eprintln!("send message failed: {e}");
@@ -3298,7 +3989,7 @@ async fn delete_conversation(
 ) -> Result<StatusCode, StatusCode> {
     let user_id = current_user_id(&pool, &headers).await?;
     let result = sqlx::query(
-        "DELETE FROM conversation_members WHERE conversation_id = $1 AND user_id = $2",
+        "DELETE FROM conversation_members cm USING conversations c WHERE cm.conversation_id = c.id AND cm.conversation_id = $1 AND cm.user_id = $2 AND (NOT c.is_group OR c.created_by <> $2)",
     )
     .bind(conversation_id)
     .bind(user_id)
@@ -3311,6 +4002,182 @@ async fn delete_conversation(
     if result.rows_affected() == 0 {
         return Err(StatusCode::NOT_FOUND);
     }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn update_group(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(conversation_id): Path<i32>,
+    Json(request): Json<GroupTitleRequest>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let title = request.title.trim();
+    if title.is_empty() || title.chars().count() > 60 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let result = sqlx::query(
+        "UPDATE conversations SET title = $1 WHERE id = $2 AND is_group AND created_by = $3",
+    )
+    .bind(title)
+    .bind(conversation_id)
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("group rename failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn list_group_members(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(conversation_id): Path<i32>,
+) -> Result<Json<Vec<GroupMember>>, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let is_member: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM conversations c JOIN conversation_members cm ON cm.conversation_id = c.id WHERE c.id = $1 AND c.is_group AND cm.user_id = $2)",
+    )
+    .bind(conversation_id)
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("group member access check failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    if !is_member {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    let members = sqlx::query_as::<_, GroupMember>(
+        "SELECT u.id, u.username, (u.id = c.created_by) AS is_owner FROM conversation_members cm JOIN users u ON u.id = cm.user_id JOIN conversations c ON c.id = cm.conversation_id WHERE c.id = $1 ORDER BY is_owner DESC, u.username",
+    )
+    .bind(conversation_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("group member list failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(members))
+}
+
+async fn remove_group_member(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path((conversation_id, member_id)): Path<(i32, i32)>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let result = sqlx::query(
+        "DELETE FROM conversation_members cm USING conversations c WHERE cm.conversation_id = c.id AND cm.conversation_id = $1 AND cm.user_id = $2 AND c.is_group AND c.created_by = $3 AND cm.user_id <> c.created_by",
+    )
+    .bind(conversation_id)
+    .bind(member_id)
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("group member removal failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn delete_group_messages(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(conversation_id): Path<i32>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let is_owner: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM conversations WHERE id = $1 AND is_group AND created_by = $2)",
+    )
+    .bind(conversation_id)
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("group owner check failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    if !is_owner {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    let paths: Vec<(Option<String>,)> = sqlx::query_as(
+        "DELETE FROM direct_messages m USING conversations c WHERE m.conversation_id = c.id AND c.id = $1 AND c.is_group AND c.created_by = $2 RETURNING m.image_path",
+    )
+    .bind(conversation_id)
+    .bind(user_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("group message deletion failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    for (path,) in paths {
+        if let Some(path) = path {
+            remove_private_image(&path).await;
+        }
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn delete_group(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(conversation_id): Path<i32>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let result = sqlx::query(
+        "DELETE FROM conversations WHERE id = $1 AND is_group AND created_by = $2",
+    )
+    .bind(conversation_id)
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("group deletion failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn delete_message(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path((conversation_id, message_id)): Path<(i32, i64)>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let row: Option<(Option<String>,)> = sqlx::query_as(
+        "DELETE FROM direct_messages m USING conversations c, conversation_members mine WHERE m.id = $1 AND m.conversation_id = c.id AND c.id = $2 AND mine.conversation_id = c.id AND mine.user_id = $3 AND (m.sender_id = $3 OR (c.is_group AND c.created_by = $3)) RETURNING m.image_path",
+    )
+    .bind(message_id)
+    .bind(conversation_id)
+    .bind(user_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("message deletion failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let Some((Some(path),)) = row.as_ref() else {
+        if row.is_none() {
+            return Err(StatusCode::NOT_FOUND);
+        }
+        return Ok(StatusCode::NO_CONTENT);
+    };
+    remove_private_image(path).await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -3358,7 +4225,7 @@ async fn read_message_image(
     State(pool): State<PgPool>,
     headers: HeaderMap,
     Path(message_id): Path<i64>,
-) -> Result<impl IntoResponse, StatusCode> {
+) -> Result<Response, StatusCode> {
     let user_id = current_user_id(&pool, &headers).await?;
     let path: Option<(String,)> = sqlx::query_as(
         r#"
@@ -3377,6 +4244,15 @@ async fn read_message_image(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     let (path,) = path.ok_or(StatusCode::NOT_FOUND)?;
+    if path.starts_with("https://") {
+        let parsed = reqwest::Url::parse(&path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let host = parsed.host_str().unwrap_or_default();
+        if parsed.scheme() == "https" && (host == "giphy.com" || host.ends_with(".giphy.com")
+            || host == "upload.wikimedia.org" || host == "thumb.wikimedia.org" || host == "commons.wikimedia.org") {
+            return Ok(Redirect::temporary(&path).into_response());
+        }
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
     let safe =
         !path.is_empty() && !path.contains('/') && !path.contains('\\') && !path.contains("..");
     if !safe {
@@ -3404,7 +4280,7 @@ async fn read_message_image(
             (header::CACHE_CONTROL, "private, no-store"),
         ],
         bytes,
-    ))
+    ).into_response())
 }
 
 // Trims text; empty becomes "not set"; too long is rejected.
@@ -3437,6 +4313,68 @@ async fn update_profile(
     let mood = clean(p.mood, 20)?;
     let interests = clean(p.interests, 200)?;
     let relationship_status = clean(p.relationship_status, 30)?;
+    let company_name = clean(p.company_name, 100)?;
+    let designation = clean(p.designation, 100)?;
+    let contact_email = clean(p.contact_email, 254)?.map(|value| value.to_ascii_lowercase());
+    let phone_number = clean(p.phone_number, 30)?;
+    let instagram_handle = clean(p.instagram_handle, 60)?;
+    let facebook_handle = clean(p.facebook_handle, 60)?;
+    let tiktok_handle = clean(p.tiktok_handle, 60)?;
+    let linkedin_handle = clean(p.linkedin_handle, 100)?;
+    let date_of_birth = clean(p.date_of_birth, 10)?;
+    let birthday_visibility = p.birthday_visibility.unwrap_or_else(|| "self".to_string());
+    let work_visibility = p.work_visibility.unwrap_or_else(|| "self".to_string());
+    let email_visibility = p.email_visibility.unwrap_or_else(|| "self".to_string());
+    let phone_visibility = p.phone_visibility.unwrap_or_else(|| "self".to_string());
+    let social_visibility = p.social_visibility.unwrap_or_else(|| "self".to_string());
+
+    let valid_visibility = |value: &str| matches!(value, "everyone" | "friends" | "self");
+    if !valid_visibility(&birthday_visibility)
+        || !valid_visibility(&work_visibility)
+        || !valid_visibility(&email_visibility)
+        || !valid_visibility(&phone_visibility)
+        || !valid_visibility(&social_visibility)
+    {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if let Some(email) = &contact_email {
+        let valid = email.split_once('@').is_some_and(|(local, domain)| {
+            !local.is_empty()
+                && !domain.contains('@')
+                && domain.rsplit_once('.').is_some_and(|(host, suffix)| !host.is_empty() && !suffix.is_empty())
+        });
+        if !valid {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
+    if phone_number.as_deref().is_some_and(|phone| !phone.chars().all(|ch| ch.is_ascii_digit() || "+()- ".contains(ch))) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let valid_handle = |value: &Option<String>| value.as_deref().is_none_or(|handle| {
+        handle.trim_start_matches('@').chars().all(|ch| ch.is_ascii_alphanumeric() || "._-".contains(ch))
+    });
+    if !valid_handle(&instagram_handle) || !valid_handle(&facebook_handle)
+        || !valid_handle(&tiktok_handle) || !valid_handle(&linkedin_handle)
+    {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if let Some(date) = &date_of_birth {
+        if date.len() != 10 || date.as_bytes().get(4) != Some(&b'-') || date.as_bytes().get(7) != Some(&b'-')
+            || !date.chars().enumerate().all(|(i, ch)| i == 4 || i == 7 || ch.is_ascii_digit())
+        {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+        let valid_age: bool = sqlx::query_scalar(
+            "SELECT $1::date <= CURRENT_DATE - INTERVAL '13 years' AND $1::date >= CURRENT_DATE - INTERVAL '120 years'",
+        )
+        .bind(date)
+        .fetch_one(&pool)
+        .await
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+        if !valid_age {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
 
     if mood.as_deref().is_some_and(|value| !mood_is_valid(value)) {
         return Err(StatusCode::BAD_REQUEST);
@@ -3455,8 +4393,14 @@ async fn update_profile(
     sqlx::query(
         "UPDATE users
          SET display_name = $1, bio = $2, age = $3, location = $4,
-             mood = $5, interests = $6, relationship_status = $7
-         WHERE id = $8",
+             mood = $5, interests = $6, relationship_status = $7,
+             date_of_birth = $8::date, birthday_visibility = $9,
+             company_name = $10, designation = $11, work_visibility = $12,
+             contact_email = $13, email_visibility = $14,
+             phone_number = $15, phone_visibility = $16,
+             instagram_handle = $17, facebook_handle = $18,
+             tiktok_handle = $19, linkedin_handle = $20, social_visibility = $21
+         WHERE id = $22",
     )
     .bind(display_name)
     .bind(bio)
@@ -3465,6 +4409,20 @@ async fn update_profile(
     .bind(mood)
     .bind(interests)
     .bind(relationship_status)
+    .bind(date_of_birth)
+    .bind(birthday_visibility)
+    .bind(company_name)
+    .bind(designation)
+    .bind(work_visibility)
+    .bind(contact_email)
+    .bind(email_visibility)
+    .bind(phone_number)
+    .bind(phone_visibility)
+    .bind(instagram_handle)
+    .bind(facebook_handle)
+    .bind(tiktok_handle)
+    .bind(linkedin_handle)
+    .bind(social_visibility)
     .bind(user_id)
     .execute(&pool)
     .await
@@ -3779,7 +4737,353 @@ async fn unfavorite_user(
     Ok(StatusCode::NO_CONTENT)
 }
 
+async fn list_friends(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<FollowedPerson>>, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let people = sqlx::query_as::<_, FollowedPerson>(
+        r#"SELECT u.username, u.display_name, u.avatar_url,
+                  EXISTS (SELECT 1 FROM user_favorites f
+                          WHERE f.user_id = $1 AND f.favorite_user_id = u.id) AS is_favorite
+           FROM follows follow
+           JOIN users u ON u.id = follow.followee_id
+           WHERE follow.follower_id = $1 AND u.account_enabled
+           ORDER BY u.username"#,
+    )
+    .bind(user_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("friends list failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(people))
+}
+
+async fn list_communities(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<CommunitySummary>>, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let groups = sqlx::query_as::<_, CommunitySummary>(
+        r#"SELECT c.id, c.name, c.description, owner.username AS owner,
+                  EXISTS (SELECT 1 FROM community_members mine WHERE mine.community_id = c.id AND mine.user_id = $1) AS is_member,
+                  COALESCE(c.created_by = $1, FALSE) AS is_owner,
+                  (SELECT COUNT(*) FROM community_members cm WHERE cm.community_id = c.id) AS member_count,
+                  to_char(c.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at
+           FROM communities c LEFT JOIN users owner ON owner.id = c.created_by
+           ORDER BY (c.created_by IS NULL) DESC, c.name"#,
+    )
+    .bind(user_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("community list failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(groups))
+}
+
+async fn create_community(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Json(input): Json<NewCommunity>,
+) -> Result<(StatusCode, Json<CommunitySummary>), StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let name = input.name.trim();
+    let description = input.description.as_deref().unwrap_or("").trim();
+    if !(3..=50).contains(&name.chars().count()) || description.chars().count() > 500 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let mut tx = pool.begin().await.map_err(|e| {
+        eprintln!("community creation transaction failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let created = sqlx::query_as::<_, (i32,)>(
+        "INSERT INTO communities (name, description, created_by) VALUES ($1, $2, $3) RETURNING id",
+    )
+    .bind(name)
+    .bind(description)
+    .bind(user_id)
+    .fetch_one(&mut *tx)
+    .await;
+    let (community_id,) = match created {
+        Ok(row) => row,
+        Err(sqlx::Error::Database(error)) if error.is_unique_violation() => return Err(StatusCode::CONFLICT),
+        Err(error) => {
+            eprintln!("community creation failed: {error}");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+    sqlx::query("INSERT INTO community_members (community_id, user_id) VALUES ($1, $2)")
+        .bind(community_id)
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            eprintln!("community owner membership creation failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    tx.commit().await.map_err(|e| {
+        eprintln!("community creation commit failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let summary = sqlx::query_as::<_, CommunitySummary>(
+        r#"SELECT c.id, c.name, c.description, owner.username AS owner, TRUE AS is_member, TRUE AS is_owner,
+                  1::BIGINT AS member_count,
+                  to_char(c.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at
+           FROM communities c JOIN users owner ON owner.id = c.created_by WHERE c.id = $1"#,
+    )
+    .bind(community_id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("created community lookup failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok((StatusCode::CREATED, Json(summary)))
+}
+
+async fn join_community(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(community_id): Path<i32>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM communities WHERE id = $1)")
+        .bind(community_id).fetch_one(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !exists { return Err(StatusCode::NOT_FOUND); }
+    sqlx::query("INSERT INTO community_members (community_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+        .bind(community_id).bind(user_id).execute(&pool).await.map_err(|e| {
+            eprintln!("community join failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn leave_community(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(community_id): Path<i32>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let owner: Option<(Option<i32>,)> = sqlx::query_as("SELECT created_by FROM communities WHERE id = $1")
+        .bind(community_id).fetch_optional(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let Some((owner_id,)) = owner else { return Err(StatusCode::NOT_FOUND); };
+    if owner_id == Some(user_id) { return Err(StatusCode::FORBIDDEN); }
+    sqlx::query("DELETE FROM community_members WHERE community_id = $1 AND user_id = $2")
+        .bind(community_id).bind(user_id).execute(&pool).await.map_err(|e| {
+            eprintln!("community leave failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn delete_community(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(community_id): Path<i32>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let result = sqlx::query("DELETE FROM communities WHERE id = $1 AND created_by = $2")
+        .bind(community_id).bind(user_id).execute(&pool).await.map_err(|e| {
+            eprintln!("community deletion failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if result.rows_affected() == 0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn update_community(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(community_id): Path<i32>,
+    Json(input): Json<NewCommunity>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let name = input.name.trim();
+    let description = input.description.as_deref().unwrap_or("").trim();
+    if !(3..=50).contains(&name.chars().count()) || description.chars().count() > 500 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let result = sqlx::query("UPDATE communities SET name = $1, description = $2 WHERE id = $3 AND created_by = $4")
+        .bind(name).bind(description).bind(community_id).bind(user_id).execute(&pool).await.map_err(|e| {
+            if e.as_database_error().is_some_and(|db| db.is_unique_violation()) { return StatusCode::CONFLICT; }
+            eprintln!("community update failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if result.rows_affected() == 0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn list_community_members(
+    State(pool): State<PgPool>, headers: HeaderMap, Path(community_id): Path<i32>,
+) -> Result<Json<Vec<CommunityMember>>, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let is_member: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$2)")
+        .bind(community_id).bind(user_id).fetch_one(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !is_member { return Err(StatusCode::FORBIDDEN); }
+    let members = sqlx::query_as::<_, CommunityMember>(
+        "SELECT u.id, u.username, (u.id = c.created_by) AS is_owner FROM community_members cm JOIN users u ON u.id=cm.user_id JOIN communities c ON c.id=cm.community_id WHERE cm.community_id=$1 ORDER BY is_owner DESC, u.username",
+    ).bind(community_id).fetch_all(&pool).await.map_err(|e| {
+        eprintln!("community members lookup failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(members))
+}
+
+async fn remove_community_member(
+    State(pool): State<PgPool>, headers: HeaderMap, Path((community_id, member_id)): Path<(i32, i32)>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let result = sqlx::query("DELETE FROM community_members cm USING communities c WHERE cm.community_id=c.id AND cm.community_id=$1 AND cm.user_id=$2 AND c.created_by=$3 AND cm.user_id<>c.created_by")
+        .bind(community_id).bind(member_id).bind(user_id).execute(&pool).await.map_err(|e| {
+            eprintln!("community member removal failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if result.rows_affected() == 0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn list_community_posts(
+    State(pool): State<PgPool>, headers: HeaderMap, Path(community_id): Path<i32>,
+) -> Result<Json<Vec<CommunityPost>>, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let member: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$2)")
+        .bind(community_id).bind(user_id).fetch_one(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !member { return Err(StatusCode::FORBIDDEN); }
+    let posts = sqlx::query_as::<_, CommunityPost>(
+        r#"SELECT p.id, u.username, p.title, p.body,
+                  to_char(p.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
+                  (SELECT COUNT(*) FROM community_comments cc WHERE cc.post_id=p.id) AS comment_count,
+                  (p.user_id=$2 OR c.created_by=$2) AS can_delete
+           FROM community_posts p JOIN users u ON u.id=p.user_id JOIN communities c ON c.id=p.community_id
+           WHERE p.community_id=$1 ORDER BY p.created_at DESC, p.id DESC LIMIT 200"#,
+    ).bind(community_id).bind(user_id).fetch_all(&pool).await.map_err(|e| {
+        eprintln!("community posts lookup failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(posts))
+}
+
+async fn create_community_post(
+    State(pool): State<PgPool>, headers: HeaderMap, Path(community_id): Path<i32>, Json(input): Json<CommunityPostInput>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let title=input.title.trim(); let body=input.body.trim();
+    if title.is_empty() || title.chars().count()>120 || body.is_empty() || body.chars().count()>5000 { return Err(StatusCode::BAD_REQUEST); }
+    let result=sqlx::query("INSERT INTO community_posts(community_id,user_id,title,body) SELECT $1,$2,$3,$4 WHERE EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$2)")
+        .bind(community_id).bind(user_id).bind(title).bind(body).execute(&pool).await.map_err(|e| { eprintln!("community post create failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?;
+    if result.rows_affected()==0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::CREATED)
+}
+
+async fn delete_community_post(
+    State(pool): State<PgPool>, headers: HeaderMap, Path((community_id, post_id)): Path<(i32, i64)>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id=current_user_id(&pool,&headers).await?;
+    let result=sqlx::query("DELETE FROM community_posts p USING communities c WHERE p.community_id=c.id AND p.community_id=$1 AND p.id=$2 AND (p.user_id=$3 OR c.created_by=$3)")
+        .bind(community_id).bind(post_id).bind(user_id).execute(&pool).await.map_err(|e| { eprintln!("community post delete failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?;
+    if result.rows_affected()==0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn list_community_comments(
+    State(pool): State<PgPool>, headers: HeaderMap, Path((community_id, post_id)): Path<(i32, i64)>,
+) -> Result<Json<Vec<CommunityComment>>, StatusCode> {
+    let user_id=current_user_id(&pool,&headers).await?;
+    let member:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$2)")
+        .bind(community_id).bind(user_id).fetch_one(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !member { return Err(StatusCode::FORBIDDEN); }
+    let rows=sqlx::query_as::<_,CommunityComment>(
+        r#"SELECT cc.id,u.username,cc.body,to_char(cc.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
+                  (cc.user_id=$3 OR c.created_by=$3) AS can_delete
+           FROM community_comments cc JOIN users u ON u.id=cc.user_id JOIN communities c ON c.id=cc.community_id
+           WHERE cc.community_id=$1 AND cc.post_id=$2 ORDER BY cc.created_at,cc.id"#
+    ).bind(community_id).bind(post_id).bind(user_id).fetch_all(&pool).await.map_err(|e| { eprintln!("community comments lookup failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?;
+    Ok(Json(rows))
+}
+
+async fn create_community_comment(
+    State(pool): State<PgPool>, headers: HeaderMap, Path((community_id, post_id)): Path<(i32, i64)>, Json(input): Json<CommunityCommentInput>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id=current_user_id(&pool,&headers).await?;
+    let body=input.body.trim(); if body.is_empty() || body.chars().count()>2000 { return Err(StatusCode::BAD_REQUEST); }
+    let result=sqlx::query("INSERT INTO community_comments(community_id,post_id,user_id,body) SELECT $1,$2,$3,$4 WHERE EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$3) AND EXISTS(SELECT 1 FROM community_posts WHERE id=$2 AND community_id=$1)")
+        .bind(community_id).bind(post_id).bind(user_id).bind(body).execute(&pool).await.map_err(|e| { eprintln!("community comment create failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?;
+    if result.rows_affected()==0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::CREATED)
+}
+
+async fn delete_community_comment(
+    State(pool): State<PgPool>, headers: HeaderMap, Path((community_id, post_id, comment_id)): Path<(i32, i64, i64)>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id=current_user_id(&pool,&headers).await?;
+    let result=sqlx::query("DELETE FROM community_comments cc USING communities c WHERE cc.community_id=c.id AND cc.community_id=$1 AND cc.post_id=$2 AND cc.id=$3 AND (cc.user_id=$4 OR c.created_by=$4)")
+        .bind(community_id).bind(post_id).bind(comment_id).bind(user_id).execute(&pool).await.map_err(|e| { eprintln!("community comment delete failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?;
+    if result.rows_affected()==0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn ensure_user_settings_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS date_of_birth DATE,
+            ADD COLUMN IF NOT EXISTS birthday_visibility TEXT NOT NULL DEFAULT 'self',
+            ADD COLUMN IF NOT EXISTS company_name TEXT,
+            ADD COLUMN IF NOT EXISTS designation TEXT,
+            ADD COLUMN IF NOT EXISTS work_visibility TEXT NOT NULL DEFAULT 'self',
+            ADD COLUMN IF NOT EXISTS contact_email TEXT,
+            ADD COLUMN IF NOT EXISTS email_visibility TEXT NOT NULL DEFAULT 'self',
+            ADD COLUMN IF NOT EXISTS phone_visibility TEXT NOT NULL DEFAULT 'self',
+            ADD COLUMN IF NOT EXISTS instagram_handle TEXT,
+            ADD COLUMN IF NOT EXISTS facebook_handle TEXT,
+            ADD COLUMN IF NOT EXISTS tiktok_handle TEXT,
+            ADD COLUMN IF NOT EXISTS linkedin_handle TEXT,
+            ADD COLUMN IF NOT EXISTS social_visibility TEXT NOT NULL DEFAULT 'self'"#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"CREATE TABLE IF NOT EXISTS communities (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            created_by INT REFERENCES users(id) ON DELETE SET NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )"#,
+    ).execute(pool).await?;
+    sqlx::query("CREATE UNIQUE INDEX IF NOT EXISTS communities_name_lower_idx ON communities (lower(name))")
+        .execute(pool).await?;
+    sqlx::query(
+        r#"CREATE TABLE IF NOT EXISTS community_members (
+            community_id INT NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+            user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            joined_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            PRIMARY KEY (community_id, user_id)
+        )"#,
+    ).execute(pool).await?;
+    sqlx::query(
+        r#"CREATE TABLE IF NOT EXISTS community_posts (
+            id BIGSERIAL PRIMARY KEY,
+            community_id INT NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+            user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            title TEXT NOT NULL,
+            body TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )"#,
+    ).execute(pool).await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS community_posts_feed_idx ON community_posts (community_id, created_at DESC)")
+        .execute(pool).await?;
+    sqlx::query(
+        r#"CREATE TABLE IF NOT EXISTS community_comments (
+            id BIGSERIAL PRIMARY KEY,
+            community_id INT NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+            post_id BIGINT NOT NULL REFERENCES community_posts(id) ON DELETE CASCADE,
+            user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            body TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )"#,
+    ).execute(pool).await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS community_comments_post_idx ON community_comments (post_id, created_at)")
+        .execute(pool).await?;
+    sqlx::query("INSERT INTO communities (name, description) VALUES ('Men', 'A place for men to connect and support one another.'), ('Women', 'A welcoming space for women to share and support.'), ('Tech', 'Discuss technology, products, careers, and ideas.'), ('Cricket', 'Talk matches, teams, players, and cricket news.') ON CONFLICT DO NOTHING")
+        .execute(pool).await?;
     sqlx::query(
         r#"
         DO $$
@@ -3925,6 +5229,9 @@ async fn ensure_user_settings_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::query("ALTER TABLE conversation_members ADD COLUMN IF NOT EXISTS last_read_at TIMESTAMPTZ")
         .execute(pool)
         .await?;
+    sqlx::query("ALTER TABLE conversations ADD COLUMN IF NOT EXISTS is_muted BOOLEAN NOT NULL DEFAULT FALSE")
+        .execute(pool)
+        .await?;
 
     sqlx::query(
         r#"CREATE TABLE IF NOT EXISTS conversation_reports (
@@ -3950,6 +5257,12 @@ async fn ensure_user_settings_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
     sqlx::query("INSERT INTO app_settings (key, value) VALUES ('allow_signups', 'true') ON CONFLICT (key) DO NOTHING")
+        .execute(pool)
+        .await?;
+    sqlx::query("INSERT INTO app_settings (key, value) VALUES ('app_enabled', 'true') ON CONFLICT (key) DO NOTHING")
+        .execute(pool)
+        .await?;
+    sqlx::query("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_superadmin BOOLEAN NOT NULL DEFAULT FALSE")
         .execute(pool)
         .await?;
 
@@ -4085,14 +5398,35 @@ async fn main() {
                 .expect("could not apply ADMIN_USERNAMES");
         }
     }
+    if let Ok(superadmin_usernames) = std::env::var("SUPERADMIN_USERNAMES") {
+        let names: Vec<String> = superadmin_usernames
+            .split(',')
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(str::to_owned)
+            .collect();
+        if !names.is_empty() {
+            sqlx::query("UPDATE users SET is_admin = TRUE, is_superadmin = TRUE WHERE username = ANY($1)")
+                .bind(names)
+                .execute(&pool)
+                .await
+                .expect("could not apply SUPERADMIN_USERNAMES");
+        }
+    }
 
     let app = Router::new()
         .route("/api/feed", get(feed))
         .route("/api/signup", post(signup))
         .route("/api/login", post(login))
         .route("/api/me", get(me))
+        .route("/api/status", get(app_status))
         .route("/api/admin/overview", get(admin_overview))
-        .route("/api/admin/users/{id}", put(admin_update_user))
+        .route("/api/admin/users/{id}", put(admin_update_user).delete(admin_delete_user))
+        .route("/api/admin/users/{id}/role", put(admin_update_role))
+        .route("/api/admin/conversations/{id}", delete(admin_delete_conversation))
+        .route("/api/admin/conversations/{id}/moderation", put(admin_update_conversation))
+        .route("/api/chat-media/search", get(search_chat_media))
+        .route("/api/locations/search", get(search_locations))
         .route("/api/admin/config", put(admin_update_config))
         .route(
             "/api/me/settings",
@@ -4143,9 +5477,14 @@ async fn main() {
             "/api/conversations/{id}/messages",
             get(list_messages)
                 .post(send_message)
+                .delete(delete_group_messages)
                 .layer(DefaultBodyLimit::max(51 * 1024 * 1024)),
         )
-        .route("/api/conversations/{id}", delete(delete_conversation))
+        .route("/api/conversations/{id}/messages/{message_id}", delete(delete_message))
+        .route("/api/conversations/{id}/members", get(list_group_members))
+        .route("/api/conversations/{id}/members/{member_id}", delete(remove_group_member))
+        .route("/api/conversations/{id}/group", delete(delete_group))
+        .route("/api/conversations/{id}", put(update_group).delete(delete_conversation))
         .route("/api/conversations/{id}/report", post(report_conversation))
         .route("/api/users/search", get(search_users))
         .route("/api/messages/{id}/image", get(read_message_image))
@@ -4205,6 +5544,20 @@ async fn main() {
             "/api/users/{username}/favorite",
             post(favorite_user).delete(unfavorite_user),
         )
+        .route("/api/me/friends", get(list_friends))
+        .route("/api/communities", get(list_communities).post(create_community))
+        .route("/api/communities/{id}", put(update_community).delete(delete_community))
+        .route("/api/communities/{id}/join", post(join_community).delete(leave_community))
+        .route("/api/communities/{id}/members", get(list_community_members))
+        .route("/api/communities/{id}/members/{member_id}", delete(remove_community_member))
+        .route("/api/communities/{id}/posts", get(list_community_posts).post(create_community_post))
+        .route("/api/communities/{id}/posts/{post_id}", delete(delete_community_post))
+        .route("/api/communities/{id}/posts/{post_id}/comments", get(list_community_comments).post(create_community_comment))
+        .route("/api/communities/{id}/posts/{post_id}/comments/{comment_id}", delete(delete_community_comment))
+        .route_layer(middleware::from_fn_with_state(
+            pool.clone(),
+            app_enabled_guard,
+        ))
         .fallback_service(ServeDir::new("static"))
         .with_state(pool);
 

@@ -95,9 +95,33 @@
     .cover-zoom-value { min-width: 42px; color: #514d60; font-size: 11px; text-align: center; }
     .cover-editor-hint { flex: 1; color: var(--muted); font-size: 10px; }
     .admin-link { color: #7655e8; }
+    #friendsView, #communityView { max-width: 1050px; margin: 32px auto; padding: 0 22px 56px; }
+    .social-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 18px; }
+    .social-heading h1 { margin: 0; font-family: var(--serif); font-weight: 500; }
+    .social-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(235px, 1fr)); gap: 12px; }
+    .social-card, .community-post { padding: 15px; border: 1px solid var(--line); border-radius: 15px; background: white; box-shadow: 0 8px 24px #34235d08; }
+    .social-person { display: flex; align-items: center; gap: 10px; }
+    .social-person .avatar { width: 44px; height: 44px; }
+    .social-card-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+    .social-card-actions button, .community-toolbar button, .community-post button { padding: 7px 11px; font-size: 11px; }
+    .community-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 15px 0; }
+    .community-form { display: grid; gap: 9px; padding: 14px; margin: 12px 0; border: 1px solid var(--line); border-radius: 14px; background: white; }
+    .community-form input, .community-form textarea { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid var(--line); border-radius: 9px; font: inherit; }
+    .community-form textarea { min-height: 92px; resize: vertical; }
+    .community-toolbar { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0; }
+    .community-posts { display: grid; gap: 12px; margin-top: 14px; }
+    .community-post h3 { margin: 0 0 7px; }
+    .community-post p { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .community-meta, .community-note { color: var(--muted); font-size: 11px; }
+    .community-comments { display: grid; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+    .community-comment { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
     #adminView { max-width: 1220px; margin: 32px auto; padding: 0 24px 56px; }
+    .app-paused-view { max-width: 760px; margin: 15vh auto; padding: 0 22px; text-align: center; }
+    .app-paused-view h1 { margin-top: 0; font-family: var(--serif); font-weight: 500; }
     .admin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 12px; margin: 18px 0 24px; }
     .admin-stat, .admin-panel { padding: 16px; border: 1px solid var(--line); border-radius: 15px; background: white; box-shadow: 0 8px 24px #34235d08; }
+    button.admin-stat { width: 100%; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: border-color .2s, transform .2s, box-shadow .2s; }
+    button.admin-stat:hover, button.admin-stat:focus-visible { border-color: #c9b9f1; box-shadow: 0 8px 24px #34235d12; transform: translateY(-2px); outline: none; }
     .admin-stat strong { display: block; font-size: 24px; }
     .admin-stat span, .admin-muted { color: var(--muted); font-size: 11px; }
     .admin-panel { margin: 14px 0; overflow-x: auto; }
@@ -105,6 +129,16 @@
     .admin-table { width: 100%; border-collapse: collapse; font-size: 11px; }
     .admin-table th, .admin-table td { padding: 9px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
     .admin-table th { color: var(--muted); font-weight: 650; white-space: nowrap; }
+    .chat-media-picker { padding: 10px 14px; border-top: 1px solid var(--line); background: #fff; }
+    .chat-media-picker[hidden] { display: none; }
+    .chat-media-picker-head { display: flex; gap: 8px; margin-bottom: 8px; }
+    .chat-media-picker-head input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; font: inherit; font-size: 12px; }
+    .chat-media-results { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; max-height: 240px; overflow: auto; }
+    .chat-media-tile { min-width: 0; }
+    .chat-media-results button { width: 100%; min-width: 0; padding: 3px; background: white; }
+    .chat-media-results img { display: block; width: 100%; height: 76px; object-fit: cover; border-radius: 7px; }
+    .chat-media-credit { display: block; overflow: hidden; color: var(--muted); font-size: 9px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+    .chat-media-status { margin: 4px 0; color: var(--muted); font-size: 10px; }
     .map-section { overflow: hidden; border: 1px solid var(--line); border-radius: 19px; background: white; box-shadow: 0 10px 30px #34235d08; }
     .map-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 17px 20px 12px; }
     .map-heading h2 { margin: 0; font-family: var(--serif); font-size: 23px; font-weight: 500; }
@@ -293,6 +327,7 @@
     .chat-actions summary { padding: 6px 9px; border: 1px solid var(--line); border-radius: 9px; cursor: pointer; list-style: none; font-size: 12px; }
     .chat-menu { position: absolute; z-index: 5; top: calc(100% + 5px); right: 0; display: grid; width: 180px; padding: 5px; border: 1px solid var(--line); border-radius: 11px; background: white; box-shadow: 0 8px 24px #26213b1a; }
     .chat-menu button { border: 0; background: white; text-align: left; font-size: 11px; }
+    .chat-menu button[hidden] { display: none; }
     .chat-window { position: fixed; z-index: 100; right: 20px; bottom: 20px; width: min(460px, calc(100vw - 30px)); height: min(640px, calc(100vh - 100px)); min-height: 360px; border: 1px solid var(--line); border-radius: 16px; background: white; box-shadow: 0 15px 50px #201c2e45; }
     .message-list { min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; padding: 20px; }
     .message-empty { margin: auto; color: var(--muted); font-size: 12px; text-align: center; }
@@ -301,6 +336,7 @@
     .message-sender { display: block; margin-bottom: 3px; color: #39766c; font-size: 10px; font-weight: 700; }
     .message-bubble img { display: block; max-width: 100%; max-height: 300px; margin-top: 6px; border-radius: 9px; }
     .message-time { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; }
+    .message-delete { display: block; margin: 5px 0 0 auto; padding: 3px 6px; border: 0; background: transparent; color: var(--muted); font-size: 9px; }
     .message-composer { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
     .message-composer input[type=text] { flex: 1; }
     .message-composer input[type=file] { display: none; }
@@ -349,7 +385,15 @@
     .chip { display: inline-block; color: #6850b4; background: #f0ebff; border-radius: 999px; padding: 5px 11px; margin: 2px 4px 2px 0; font-size: 12px; }
     .editform { background: white; border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 10px; margin: 12px 0; }
     .editform label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
-    .editform input[type=text], .editform input[type=number], .editform textarea, .editform select { width: 100%; box-sizing: border-box; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; font: inherit; }
+    .editform input[type=text], .editform input[type=number], .editform input[type=date], .editform input[type=email], .editform input[type=tel], .editform textarea, .editform select { width: 100%; box-sizing: border-box; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; font: inherit; }
+    .location-search-wrap { position: relative; }
+    .location-search-results { position: absolute; z-index: 8; inset: calc(100% + 3px) 0 auto; max-height: 220px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; background: white; box-shadow: 0 8px 22px #26213b18; }
+    .location-search-results[hidden] { display: none; }
+    .location-search-results button { width: 100%; padding: 9px 11px; border: 0; border-radius: 0; background: white; text-align: left; }
+    .location-search-results button:hover, .location-search-results button:focus { background: #f4f1fa; }
+    .profile-contact { display: grid; gap: 6px; margin: 12px 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: #625e70; font-size: 12px; }
+    .profile-contact a { color: var(--violet); text-decoration: none; }
+    .profile-contact a:hover { text-decoration: underline; }
     .editform .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .note { color: var(--muted); font-size: 12px; }
     .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -386,6 +430,12 @@
     .user-search-results { display: grid; gap: 7px; }
     .user-search-result { display: flex; align-items: center; gap: 11px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: white; color: var(--ink); text-decoration: none; font-size: 13px; }
     .user-search-result:hover { border-color: #b7c9bb; box-shadow: 0 5px 15px #34235d12; }
+    .user-search-result-label { display: grid; gap: 2px; }
+    .user-search-result-label strong { font-size: 12px; }
+    .user-search-result-label span { color: var(--muted); font-size: 11px; }
+    .sidebar-people-search { margin-top: 0; }
+    .sidebar-people-search .user-search-form { margin: 0 0 9px; }
+    .sidebar-people-search .user-search-form input { flex-basis: 100%; }
     .user-search-message { min-height: 1.4em; color: var(--muted); font-size: 12px; }
     .settings-heading { margin-bottom: 22px; }
     .settings-heading h1 { margin: 0; font-family: var(--serif); font-size: 34px; font-weight: 500; }
@@ -393,6 +443,8 @@
     .settings-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; align-items: start; }
     .settings-stack { display: grid; gap: 14px; }
     .settings-card { padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: white; box-shadow: 0 8px 24px #34235d08; }
+    .settings-admin-card { grid-column: 1 / -1; border-color: #cbbce8; }
+    .settings-admin-link { display: inline-flex; margin-top: 8px; padding: 9px 13px; border-radius: 9px; background: var(--violet); color: white; font-size: 12px; font-weight: 650; text-decoration: none; }
     .settings-card h2 { margin: 0 0 5px; font-size: 15px; }
     .settings-card > p { margin: 0 0 14px; color: var(--muted); font-size: 11px; line-height: 1.55; }
     .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 12px 0; border-top: 1px solid #f0f1ed; }
@@ -631,6 +683,15 @@
         <div id="feed"></div>
       </section>
       <aside class="home-aside" aria-label="Community check-in map">
+        <section class="activity-panel sidebar-people-search" aria-label="Find people">
+          <h2 class="activity-heading">Find people</h2>
+          <form id="sidebarPeopleSearchForm" class="user-search-form">
+            <input id="sidebarPeopleSearchInput" type="search" name="q" maxlength="50" autocomplete="off" placeholder="Search by name or username" aria-label="Search people by name or username">
+            <button type="submit">Search</button>
+          </form>
+          <p id="sidebarPeopleSearchStatus" class="user-search-message" aria-live="polite">Search by a person’s name or username.</p>
+          <div id="sidebarPeopleSearchResults" class="user-search-results" aria-live="polite"></div>
+        </section>
         <section id="activityPanel" class="activity-panel" aria-label="Your activity" hidden>
           <h2 class="activity-heading">Your little corner</h2>
           <div class="activity-group">
@@ -661,7 +722,12 @@
   </div>
   <div id="profileView" hidden></div>
   <div id="inboxView" hidden></div>
+  <div id="friendsView" hidden></div>
+  <div id="communityView" hidden></div>
   <div id="adminView" hidden></div>
+  <div id="appPausedView" class="app-paused-view" hidden>
+    <section class="settings-card"><h1>Community is temporarily paused</h1><p>A superadmin can sign in to the Admin hub to turn the app back on.</p></section>
+  </div>
   <div id="userSearchView" hidden></div>
   <div id="settingsView" hidden></div>
   <div id="signupView" hidden></div>
@@ -670,6 +736,9 @@
   <script>
     let loggedIn = false;
     let currentUsername = '';
+    let currentIsAdmin = false;
+    let currentIsSuperadmin = false;
+    let appEnabled = true;
     let scope = 'all'; // 'all' or 'following'
     let activeConversationId = null;
     let inboxPoll = null;
@@ -1006,12 +1075,19 @@
     // ---------- routing ----------
     function route() {
       const h = location.hash;
+      document.getElementById('friendsView').hidden = true;
+      document.getElementById('communityView').hidden = true;
       document.getElementById('adminView').hidden = !h.startsWith('#/admin');
       if (h.startsWith('#/u/')) {
         const [username, dashboardSection] = h.slice(4).split('#', 2);
         showProfile(decodeURIComponent(username), false, dashboardSection || null);
       } else if (h === '#/inbox') {
         showInbox();
+      } else if (h === '#/friends') {
+        showFriends();
+      } else if (h === '#/community' || h.startsWith('#/community/')) {
+        const id = h.startsWith('#/community/') ? Number(h.slice('#/community/'.length)) : null;
+        if (id && Number.isInteger(id)) showCommunityDetail(id); else showCommunities();
       } else if (h === '#/admin') {
         showAdmin();
       } else if (h === '#/search') {
@@ -1029,6 +1105,7 @@
       stopInboxPolling();
       ['homeView', 'profileView', 'inboxView', 'userSearchView', 'settingsView', 'signupView']
         .forEach(id => { document.getElementById(id).hidden = true; });
+      document.getElementById('appPausedView').hidden = true;
       const view = document.getElementById('adminView');
       view.hidden = false;
       view.replaceChildren(el('h1', 'Admin hub', 'inbox-title'));
@@ -1039,33 +1116,79 @@
         if (response.status === 403) throw new Error('This account is not an administrator. Set ADMIN_USERNAMES in the app environment and restart the server.');
         if (!response.ok) throw new Error(response.status === 401 ? 'Please sign in again.' : 'Admin data could not be loaded.');
         const data = await response.json();
+        currentIsAdmin = true;
+        currentIsSuperadmin = data.is_superadmin;
         const grid = el('div', undefined, 'admin-grid');
-        [['Users', data.total_users], ['Posts', data.total_posts], ['Messages', data.total_messages], ['Group chats', data.total_groups], ['Reports', data.total_reports]]
-          .forEach(([label, value]) => {
-            const card = el('div', undefined, 'admin-stat');
-            card.append(el('strong', String(value)), el('span', label));
+        [['Users', data.total_users, 'admin-users'], ['Paused accounts', data.disabled_users, 'admin-users'], ['Posts', data.total_posts, 'admin-posts'], ['Messages', data.total_messages, 'admin-conversations'], ['Chats', data.total_conversations, 'admin-conversations'], ['Group chats', data.total_groups, 'admin-conversations'], ['Reports', data.total_reports, 'admin-reports']]
+          .forEach(([label, value, target]) => {
+            const card = el('button', undefined, 'admin-stat');
+            card.type = 'button';
+            card.title = 'Open ' + label.toLowerCase() + ' details';
+            card.onclick = () => document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            card.append(el('strong', String(value)), el('span', label + ' · View details →'));
             grid.append(card);
           });
         const config = el('section', undefined, 'admin-panel');
         config.append(el('h2', 'App settings and configuration'));
         config.append(el('p', 'Server: Rust + Axum · Database: PostgreSQL · Uploads: images and video · Session lifetime: 7 days', 'admin-muted'));
-        config.append(el('p', 'Admin access is controlled by ADMIN_USERNAMES in the server environment. User privacy and account settings are listed below; account access can be enabled or paused here.', 'admin-muted'));
+        config.append(el('p', 'Admins can review app data and pause accounts. Superadmins can change app availability, manage admins, remove accounts, and delete any chat.', 'admin-muted'));
         const signupLabel = el('label');
         const signupToggle = el('input'); signupToggle.type = 'checkbox'; signupToggle.checked = data.config.allow_signups;
         signupLabel.append(signupToggle, document.createTextNode(' Allow new account signups'));
+        config.append(signupLabel);
+        let appToggle = null;
+        if (data.is_superadmin) {
+          const appLabel = el('label');
+          appToggle = el('input'); appToggle.type = 'checkbox'; appToggle.checked = data.config.app_enabled;
+          appLabel.append(appToggle, document.createTextNode(' Keep the app enabled for everyone'));
+          config.append(appLabel);
+        }
         const saveConfig = el('button', 'Save configuration'); saveConfig.type = 'button';
         const configStatus = el('span', '', 'admin-muted');
         saveConfig.onclick = async () => {
           saveConfig.disabled = true;
           const saved = await fetch('/api/admin/config', {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ allow_signups: signupToggle.checked }),
+            body: JSON.stringify({ allow_signups: signupToggle.checked, ...(appToggle ? { app_enabled: appToggle.checked } : {}) }),
           });
           saveConfig.disabled = false;
-          configStatus.textContent = saved.ok ? 'Saved.' : 'Could not save this setting.';
+          configStatus.textContent = saved.ok ? 'Saved.' : saved.status === 403 ? 'Only a superadmin can change app availability.' : 'Could not save this setting.';
         };
-        config.append(signupLabel, saveConfig, configStatus);
+        config.append(saveConfig, configStatus);
+        const adminsPanel = el('section', undefined, 'admin-panel');
+        adminsPanel.id = 'admin-manage-admins';
+        const adminUsers = data.users.filter(user => user.is_admin || user.is_superadmin);
+        adminsPanel.append(el('h2', 'Admin access'));
+        adminsPanel.append(el('p', 'Only superadmins can grant or remove admin access. Admin-only pages and APIs stay hidden from regular members.', 'admin-muted'));
+        const adminsList = el('p', adminUsers.length ? adminUsers.map(user => '@' + user.username + (user.is_superadmin ? ' · Superadmin' : ' · Admin')).join('  |  ') : 'No administrators found.', 'admin-muted');
+        adminsPanel.append(adminsList);
+        const eligibleAdmins = data.users.filter(user => !user.is_admin && !user.is_superadmin && user.account_enabled);
+        if (data.is_superadmin) {
+          if (eligibleAdmins.length) {
+            const addRow = el('div');
+            const select = el('select');
+            select.setAttribute('aria-label', 'Choose a user to promote to admin');
+            select.append(new Option('Choose a user…', ''));
+            eligibleAdmins.forEach(user => select.append(new Option('@' + user.username, String(user.id))));
+            const grant = el('button', 'Add admin'); grant.type = 'button';
+            grant.onclick = async () => {
+              if (!select.value) { alert('Choose a user first.'); return; }
+              grant.disabled = true;
+              const result = await fetch('/api/admin/users/' + select.value + '/role', {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_admin: true }),
+              });
+              if (result.ok) showAdmin();
+              else { grant.disabled = false; alert('Could not grant admin access.'); }
+            };
+            addRow.append(select, grant); adminsPanel.append(addRow);
+          } else {
+            adminsPanel.append(el('p', 'Every enabled account already has admin access.'));
+          }
+          const removeInfo = el('p', 'To remove an admin, use “Remove admin” beside their account below.', 'admin-muted');
+          adminsPanel.append(removeInfo);
+        }
         const usersPanel = el('section', undefined, 'admin-panel');
+        usersPanel.id = 'admin-users';
         usersPanel.append(el('h2', 'Accounts and user settings'));
         const table = el('table', undefined, 'admin-table');
         const head = el('tr');
@@ -1074,15 +1197,15 @@
         const tbody = el('tbody');
         data.users.forEach(user => {
           const row = el('tr');
-          const profileData = [user.display_name, user.age ? user.age + ' years' : '', user.location, user.mood, user.interests, user.relationship_status, user.bio]
+          const profileData = [user.display_name, user.age ? user.age + ' years' : '', user.date_of_birth ? 'Birthday ' + user.date_of_birth : '', user.company_name, user.designation, user.location, user.mood, user.interests, user.relationship_status, user.bio]
             .filter(Boolean).join(' · ') || '—';
-          const privacy = [user.profile_visibility, 'messages: ' + user.message_privacy,
+          const privacy = [user.profile_visibility, 'messages: ' + user.message_privacy, 'birthday: ' + user.birthday_visibility, 'work: ' + user.work_visibility, 'email: ' + user.email_visibility, 'phone: ' + user.phone_visibility, 'social: ' + user.social_visibility,
             'activity: ' + (user.show_activity_status ? 'shown' : 'hidden'),
             'visitors: ' + (user.keep_profile_visitors ? 'saved' : 'off'),
             'mentions: ' + (user.notify_mentions ? 'on' : 'off')].join(' · ');
           row.append(el('td', '@' + user.username + (user.display_name ? ' · ' + user.display_name : '')),
-            el('td', [user.email, user.phone_number].filter(Boolean).join(' · ') || '—'),
-            el('td', (user.is_admin ? 'Admin' : 'Member') + ' · ' + (user.account_enabled ? 'Enabled' : 'Paused')),
+            el('td', [user.email ? 'Login: ' + user.email : '', user.contact_email ? 'Contact: ' + user.contact_email + ' (' + user.email_visibility + ')' : '', user.phone_number ? 'Phone: ' + user.phone_number + ' (' + user.phone_visibility + ')' : '', [user.instagram_handle, user.facebook_handle, user.tiktok_handle, user.linkedin_handle].filter(Boolean).length ? 'Social: ' + [user.instagram_handle, user.facebook_handle, user.tiktok_handle, user.linkedin_handle].filter(Boolean).join(', ') + ' (' + user.social_visibility + ')' : ''].filter(Boolean).join(' · ') || '—'),
+            el('td', (user.is_superadmin ? 'Superadmin' : user.is_admin ? 'Admin' : 'Member') + ' · ' + (user.account_enabled ? 'Enabled' : 'Paused')),
             el('td', profileData), el('td', privacy),
             el('td', [user.avatar_url ? 'Avatar' : '', user.cover_image_url ? 'Cover' : ''].filter(Boolean).join(' · ') || '—'),
             el('td', user.cover_position_x + '% / ' + user.cover_position_y + '% · ' + user.cover_zoom + '%'),
@@ -1100,10 +1223,76 @@
             if (updated.ok) showAdmin();
             else { toggle.disabled = false; alert('Could not update this account.'); }
           };
-          actionCell.append(toggle); row.append(actionCell); tbody.append(row);
+          actionCell.append(toggle);
+          if (data.is_superadmin && user.username !== currentUsername) {
+            const role = el('button', user.is_admin ? 'Remove admin' : 'Make admin');
+            role.onclick = async () => {
+              role.disabled = true;
+              const updated = await fetch('/api/admin/users/' + user.id + '/role', {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_admin: !user.is_admin }),
+              });
+              if (updated.ok) showAdmin();
+              else { role.disabled = false; alert('Could not update admin access.'); }
+            };
+            const removeUser = el('button', 'Remove user');
+            removeUser.onclick = async () => {
+              if (!confirm('Permanently remove @' + user.username + ' and their account data?')) return;
+              removeUser.disabled = true;
+              const removed = await fetch('/api/admin/users/' + user.id, { method: 'DELETE' });
+              if (removed.ok) showAdmin();
+              else { removeUser.disabled = false; alert('Could not remove this account.'); }
+            };
+            actionCell.append(role, removeUser);
+          }
+          row.append(actionCell); tbody.append(row);
         });
         table.append(tbody); usersPanel.append(table);
+        const chatsPanel = el('section', undefined, 'admin-panel');
+        chatsPanel.id = 'admin-conversations';
+        chatsPanel.append(el('h2', 'Chats and conversations'), el('p', 'Showing up to 500 newest chats. Deleting a chat removes it and its messages for every member.', 'admin-muted'));
+        if (data.conversations.length === 0) chatsPanel.append(el('p', 'No chats have been created.', 'admin-muted'));
+        else {
+          const chatsTable = el('table', undefined, 'admin-table');
+          const chatsHead = el('tr');
+          ['Chat', 'Owner', 'Members', 'Latest message', 'Started', 'Moderation', ...(data.is_superadmin ? ['Action'] : [])].forEach(label => chatsHead.append(el('th', label)));
+          const chatsThead = el('thead'); chatsThead.append(chatsHead); chatsTable.append(chatsThead);
+          const chatsBody = el('tbody');
+          data.conversations.forEach(chat => {
+            const row = el('tr');
+            row.append(el('td', (chat.is_group ? 'Group · ' : 'Direct · ') + (chat.title || '#' + chat.id)),
+              el('td', '@' + chat.owner), el('td', String(chat.member_count)),
+              el('td', chat.latest_message || '—'), el('td', new Date(chat.created_at).toLocaleString()));
+            const moderation = el('td');
+            moderation.append(el('span', chat.is_muted ? 'Muted' : 'Active', 'admin-muted'));
+            const mute = el('button', chat.is_muted ? 'Unmute chat' : 'Mute chat');
+            mute.onclick = async () => {
+              mute.disabled = true;
+              const result = await fetch('/api/admin/conversations/' + chat.id + '/moderation', {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_muted: !chat.is_muted }),
+              });
+              if (result.ok) showAdmin();
+              else { mute.disabled = false; alert('Could not update chat moderation.'); }
+            };
+            moderation.append(document.createTextNode(' '), mute); row.append(moderation);
+            if (data.is_superadmin) {
+              const action = el('td');
+              const remove = el('button', 'Delete chat');
+              remove.onclick = async () => {
+                if (!confirm('Delete this chat and all its messages for every member?')) return;
+                remove.disabled = true;
+                const result = await fetch('/api/admin/conversations/' + chat.id, { method: 'DELETE' });
+                if (result.ok) showAdmin();
+                else { remove.disabled = false; alert('Could not delete this chat.'); }
+              };
+              action.append(remove); row.append(action);
+            }
+            chatsBody.append(row);
+          });
+          chatsTable.append(chatsBody); chatsPanel.append(chatsTable);
+        }
         const postsPanel = el('section', undefined, 'admin-panel');
+        postsPanel.id = 'admin-posts';
         postsPanel.append(el('h2', 'Recent posts'), el('p', 'Showing up to 500 newest posts.', 'admin-muted'));
         if (data.posts.length === 0) postsPanel.append(el('p', 'No posts have been published.', 'admin-muted'));
         else {
@@ -1123,6 +1312,7 @@
           postsTable.append(postBody); postsPanel.append(postsTable);
         }
         const reportsPanel = el('section', undefined, 'admin-panel');
+        reportsPanel.id = 'admin-reports';
         reportsPanel.append(el('h2', 'Recent post reports'));
         if (data.reports.length === 0) reportsPanel.append(el('p', 'No reports have been submitted.', 'admin-muted'));
         else {
@@ -1156,11 +1346,125 @@
           });
           reports.append(reportBody); chatReportsPanel.append(reports);
         }
-        view.replaceChildren(el('h1', 'Admin hub', 'inbox-title'), grid, config, usersPanel, postsPanel, reportsPanel, chatReportsPanel);
+        view.replaceChildren(el('h1', data.is_superadmin ? 'Superadmin dashboard' : 'Admin hub', 'inbox-title'), grid, config, ...(data.is_superadmin ? [adminsPanel] : []), usersPanel, chatsPanel, postsPanel, reportsPanel, chatReportsPanel);
       } catch (error) {
         status.className = 'empty';
         status.textContent = error.message;
       }
+    }
+
+    function hideSocialViews() {
+      ['homeView', 'profileView', 'inboxView', 'friendsView', 'communityView', 'userSearchView', 'settingsView', 'signupView', 'adminView']
+        .forEach(id => { const node = document.getElementById(id); if (node) node.hidden = true; });
+      document.getElementById('appPausedView').hidden = true;
+    }
+
+    async function showFriends() {
+      stopInboxPolling(); hideSocialViews();
+      const view = document.getElementById('friendsView'); view.hidden = false; view.replaceChildren();
+      view.append(el('h1', 'Friends', 'inbox-title'));
+      if (!loggedIn) { view.append(el('p', 'Log in to see the people you follow.', 'empty')); return; }
+      const response = await fetch('/api/me/friends');
+      if (!response.ok) { view.append(el('p', 'Friends could not be loaded. Please try again.', 'empty')); return; }
+      const people = await response.json();
+      const following = el('section'); following.append(el('h2', `Following · ${people.length}`));
+      if (!people.length) following.append(el('p', 'People you follow will appear here.', 'empty'));
+      const grid = el('div', undefined, 'social-grid');
+      people.forEach(person => {
+        const card = el('article', undefined, 'social-card');
+        const row = el('div', undefined, 'social-person'); row.append(avatarEl(person.avatar_url), profileLink(person.username, '@' + person.username)); card.append(row);
+        const actions = el('div', undefined, 'social-card-actions');
+        const favorite = el('button', person.is_favorite ? '★ Favorited' : '☆ Add to favorites');
+        favorite.onclick = async () => { const r = await fetch('/api/users/' + encodeURIComponent(person.username) + '/favorite', { method: person.is_favorite ? 'DELETE' : 'POST' }); if (r.ok) showFriends(); };
+        const unfollow = el('button', 'Unfollow');
+        unfollow.onclick = async () => { if (window.confirm(`Unfollow @${person.username}?`)) { const r = await fetch('/api/users/' + encodeURIComponent(person.username) + '/follow', { method: 'DELETE' }); if (r.ok) showFriends(); } };
+        actions.append(favorite, unfollow); card.append(actions); grid.append(card);
+      });
+      following.append(grid); view.append(following);
+      const favoriteSection = el('section'); favoriteSection.append(el('h2', 'Favorites'));
+      const favorites = people.filter(p => p.is_favorite);
+      if (!favorites.length) favoriteSection.append(el('p', 'Mark people as favorites for quick access.', 'empty'));
+      const favGrid = el('div', undefined, 'social-grid');
+      favorites.forEach(person => { const card = el('article', undefined, 'social-card'); const row = el('div', undefined, 'social-person'); row.append(avatarEl(person.avatar_url), profileLink(person.username, '@' + person.username)); card.append(row); favGrid.append(card); });
+      favoriteSection.append(favGrid); view.append(favoriteSection);
+    }
+
+    async function showCommunities() {
+      stopInboxPolling(); hideSocialViews();
+      const view = document.getElementById('communityView'); view.hidden = false; view.replaceChildren();
+      const heading = el('div', undefined, 'social-heading'); heading.append(el('h1', 'Communities'));
+      if (loggedIn) { const create = el('button', 'Create a community'); create.onclick = () => { const form = document.getElementById('communityCreateForm'); form.hidden = !form.hidden; }; heading.append(create); }
+      view.append(heading);
+      if (!loggedIn) { view.append(el('p', 'Log in to join or create a community.', 'empty')); return; }
+      const form = el('form', undefined, 'community-form'); form.id = 'communityCreateForm'; form.hidden = true;
+      const name = el('input'); name.placeholder = 'Community name'; name.maxLength = 50; name.required = true;
+      const description = el('textarea'); description.placeholder = 'What is this community for?'; description.maxLength = 500;
+      const submit = el('button', 'Create community'); submit.type = 'submit';
+      const status = el('p', '', 'community-note'); form.append(name, description, submit, status);
+      form.onsubmit = async event => { event.preventDefault(); const r = await post('/api/communities', { name: name.value, description: description.value }); if (r.ok) { const created = await r.json(); location.hash = '#/community/' + created.id; } else status.textContent = r.status === 409 ? 'That community name is already taken.' : 'Could not create the community.'; };
+      view.append(form);
+      const response = await fetch('/api/communities');
+      if (!response.ok) { view.append(el('p', 'Communities could not be loaded.', 'empty')); return; }
+      const communities = await response.json();
+      const tabs = el('div', undefined, 'community-tabs');
+      const grid = el('div', undefined, 'social-grid');
+      communities.forEach(group => {
+        const card = el('article', undefined, 'social-card');
+        card.append(el('h2', group.name), el('p', group.description || 'A community space for discussion.', 'community-note'), el('p', `${group.member_count} members${group.owner ? ' · owned by @' + group.owner : ''}`, 'community-meta'));
+        const actions = el('div', undefined, 'social-card-actions');
+        const open = el('button', group.is_member ? 'Open community' : 'Join community');
+        open.onclick = async () => { if (!group.is_member) { const r = await post(`/api/communities/${group.id}/join`); if (!r.ok) return alert('Could not join this community.'); } location.hash = '#/community/' + group.id; };
+        actions.append(open);
+        if (group.is_member && !group.is_owner) { const leave = el('button', 'Leave'); leave.onclick = async () => { const r = await fetch(`/api/communities/${group.id}/join`, { method: 'DELETE' }); if (r.ok) showCommunities(); }; actions.append(leave); }
+        card.append(actions); grid.append(card);
+      });
+      view.append(grid);
+    }
+
+    async function showCommunityDetail(id) {
+      stopInboxPolling(); hideSocialViews();
+      const view = document.getElementById('communityView'); view.hidden = false; view.replaceChildren();
+      const back = el('a', '← All communities', 'back'); back.href = '#/community'; view.append(back);
+      if (!loggedIn) { view.append(el('p', 'Log in to view communities.', 'empty')); return; }
+      const listRes = await fetch('/api/communities');
+      if (!listRes.ok) { view.append(el('p', 'Community could not be loaded.', 'empty')); return; }
+      const group = (await listRes.json()).find(item => item.id === id);
+      if (!group) { view.append(el('p', 'Community not found.', 'empty')); return; }
+      const heading = el('div', undefined, 'social-heading'); heading.append(el('h1', group.name));
+      if (!group.is_member) { const join = el('button', 'Join community'); join.onclick = async () => { const r = await post(`/api/communities/${id}/join`); if (r.ok) showCommunityDetail(id); }; heading.append(join); view.append(heading, el('p', 'Join to read and take part in discussions.', 'community-note')); return; }
+      view.append(heading, el('p', group.description || 'A community space for discussion.', 'community-note'));
+      const toolbar = el('div', undefined, 'community-toolbar');
+      if (!group.is_owner) { const leave = el('button', 'Leave community'); leave.onclick = async () => { const r = await fetch(`/api/communities/${id}/join`, { method: 'DELETE' }); if (r.ok) location.hash = '#/community'; }; toolbar.append(leave); }
+      if (group.is_owner) {
+        const edit = el('button', 'Edit community'); edit.onclick = async () => { const name = prompt('Community name', group.name); if (!name) return; const description = prompt('Description', group.description) ?? group.description; const r = await fetch(`/api/communities/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, description }) }); if (r.ok) showCommunityDetail(id); else alert('Could not update community.'); };
+        const memberButton = el('button', 'View members'); memberButton.onclick = async () => { const r = await fetch(`/api/communities/${id}/members`); if (!r.ok) return; const members = await r.json(); const panel = document.getElementById('communityMembers'); panel.replaceChildren(el('h3', `Members · ${members.length}`)); members.forEach(member => { const row = el('div', undefined, 'community-comment'); row.append(profileLink(member.username, '@' + member.username + (member.is_owner ? ' · owner' : ''))); if (!member.is_owner) { const remove = el('button', 'Remove'); remove.onclick = async () => { const r = await fetch(`/api/communities/${id}/members/${member.id}`, { method: 'DELETE' }); if (r.ok) memberButton.click(); }; row.append(remove); } panel.append(row); }); panel.hidden = false; };
+        const remove = el('button', 'Delete community'); remove.onclick = async () => { if (window.confirm('Delete this community and all its discussions?')) { const r = await fetch(`/api/communities/${id}`, { method: 'DELETE' }); if (r.ok) location.hash = '#/community'; else alert('Could not delete community.'); } };
+        toolbar.append(edit, memberButton, remove);
+      }
+      view.append(toolbar);
+      const members = el('section', undefined, 'community-comments'); members.id = 'communityMembers'; members.hidden = true; view.append(members);
+      const form = el('form', undefined, 'community-form'); form.append(el('h2', 'Start a discussion'));
+      const title = el('input'); title.placeholder = 'Topic title'; title.maxLength = 120; title.required = true;
+      const body = el('textarea'); body.placeholder = 'Share a question, idea, or advice with the community'; body.maxLength = 5000; body.required = true;
+      const submit = el('button', 'Post topic'); submit.type = 'submit'; const status = el('p', '', 'community-note'); form.append(title, body, submit, status);
+      form.onsubmit = async event => { event.preventDefault(); const r = await post(`/api/communities/${id}/posts`, { title: title.value, body: body.value }); if (r.ok) showCommunityDetail(id); else status.textContent = 'Could not post. Check that the title and message are filled in.'; };
+      view.append(form);
+      const postsRes = await fetch(`/api/communities/${id}/posts`);
+      if (!postsRes.ok) { view.append(el('p', 'Discussions could not be loaded.', 'empty')); return; }
+      const posts = await postsRes.json(); const postsBox = el('section', undefined, 'community-posts');
+      if (!posts.length) postsBox.append(el('p', 'No discussions yet. Start the first topic above.', 'empty'));
+      posts.forEach(topic => {
+        const card = el('article', undefined, 'community-post'); card.append(el('h3', topic.title), el('p', topic.body), el('div', `Posted by @${topic.username} · ${topic.comment_count} replies`, 'community-meta'));
+        const actions = el('div', undefined, 'community-toolbar');
+        const commentsToggle = el('button', 'Replies'); const comments = el('div', undefined, 'community-comments'); comments.hidden = true;
+        commentsToggle.onclick = async () => { comments.hidden = !comments.hidden; if (!comments.hidden && !comments.dataset.loaded) { const r = await fetch(`/api/communities/${id}/posts/${topic.id}/comments`); if (r.ok) { const rows = await r.json(); rows.forEach(comment => { const row = el('div', undefined, 'community-comment'); row.append(el('span', '@' + comment.username + ': ' + comment.body)); if (comment.can_delete) { const del = el('button', 'Delete'); del.onclick = async () => { const d = await fetch(`/api/communities/${id}/posts/${topic.id}/comments/${comment.id}`, { method: 'DELETE' }); if (d.ok) showCommunityDetail(id); }; row.append(del); } comments.append(row); }); comments.dataset.loaded = '1'; } } };
+        actions.append(commentsToggle);
+        if (topic.can_delete) { const del = el('button', 'Delete topic'); del.onclick = async () => { if (window.confirm('Delete this discussion?')) { const r = await fetch(`/api/communities/${id}/posts/${topic.id}`, { method: 'DELETE' }); if (r.ok) showCommunityDetail(id); } }; actions.append(del); }
+        const commentForm = el('form', undefined, 'community-toolbar'); const input = el('input'); input.placeholder = 'Write a reply'; input.maxLength = 2000; input.required = true; const send = el('button', 'Reply'); send.type = 'submit'; commentForm.append(input, send);
+        commentForm.onsubmit = async event => { event.preventDefault(); const r = await post(`/api/communities/${id}/posts/${topic.id}/comments`, { body: input.value }); if (r.ok) showCommunityDetail(id); else alert('Could not add reply.'); };
+        card.append(actions, comments, commentForm); postsBox.append(card);
+      });
+      view.append(postsBox);
     }
 
     function showHome() {
@@ -1374,6 +1678,20 @@
         card.append(home);
         view.append(card);
         return;
+      }
+
+      if (currentIsAdmin) {
+        const adminCard = el('section', undefined, 'settings-card settings-admin-card');
+        adminCard.append(
+          el('h2', currentIsSuperadmin ? 'Superadmin controls' : 'Admin controls'),
+          el('p', currentIsSuperadmin
+            ? 'Open the dashboard to manage the app, administrators, accounts, chats, and community activity.'
+            : 'Open the dashboard to review app activity and account settings.'),
+        );
+        const adminLink = el('a', currentIsSuperadmin ? 'Open superadmin dashboard' : 'Open admin hub', 'settings-admin-link');
+        adminLink.href = '#/admin';
+        adminCard.append(adminLink);
+        view.append(adminCard);
       }
 
       let settings;
@@ -1592,7 +1910,7 @@
       const heading = el('header', undefined, 'user-search-heading');
       heading.append(
         el('h1', 'Find people'),
-        el('p', 'Search Community usernames and open a profile to learn more.'),
+        el('p', 'Search by a person’s name or username and open their profile.'),
       );
       view.append(heading);
 
@@ -1610,10 +1928,10 @@
       const input = el('input');
       input.type = 'search';
       input.name = 'q';
-      input.maxLength = 30;
+      input.maxLength = 50;
       input.autocomplete = 'off';
-      input.placeholder = 'Search usernames';
-      input.setAttribute('aria-label', 'Search usernames');
+      input.placeholder = 'Search by name or username';
+      input.setAttribute('aria-label', 'Search by name or username');
       const submit = el('button', 'Search');
       submit.type = 'submit';
       const status = el('p', 'Enter at least 2 letters to search.', 'user-search-message');
@@ -1642,13 +1960,16 @@
             status.textContent = 'No matching users found.';
             return;
           }
-          status.textContent = users.length === 10
-            ? 'Showing the first 10 matching users.'
+          status.textContent = users.length === 50
+            ? 'Showing the first 50 matching users.'
             : users.length + (users.length === 1 ? ' person found.' : ' people found.');
           users.forEach(user => {
             const link = profileLink(user.username, '');
             link.className = 'user-search-result';
-            link.append(avatarEl(user.avatar_url), el('span', '@' + user.username));
+            const label = el('span', undefined, 'user-search-result-label');
+            if (user.display_name) label.append(el('strong', user.display_name));
+            label.append(el('span', '@' + user.username));
+            link.append(avatarEl(user.avatar_url), label);
             results.append(link);
           });
         } catch (error) {
@@ -1659,6 +1980,54 @@
         }
       };
       input.focus();
+    }
+
+    function setupSidebarPeopleSearch() {
+      const form = document.getElementById('sidebarPeopleSearchForm');
+      const input = document.getElementById('sidebarPeopleSearchInput');
+      const status = document.getElementById('sidebarPeopleSearchStatus');
+      const results = document.getElementById('sidebarPeopleSearchResults');
+      let requestId = 0;
+      form.onsubmit = async event => {
+        event.preventDefault();
+        const query = input.value.trim();
+        const currentRequest = ++requestId;
+        if (query.length < 2) {
+          status.textContent = 'Enter at least 2 letters to search.';
+          results.replaceChildren();
+          return;
+        }
+        status.textContent = 'Searching...';
+        results.replaceChildren();
+        try {
+          const response = await fetch('/api/users/search?q=' + encodeURIComponent(query));
+          if (currentRequest !== requestId) return;
+          if (response.status === 401) {
+            status.textContent = 'Log in to search for people.';
+            return;
+          }
+          if (!response.ok) throw new Error('People search failed.');
+          const users = await response.json();
+          if (!users.length) {
+            status.textContent = 'No matching people found.';
+            return;
+          }
+          status.textContent = users.length + (users.length === 1 ? ' person found.' : ' people found.');
+          users.forEach(user => {
+            const link = profileLink(user.username, '');
+            link.className = 'user-search-result';
+            const label = el('span', undefined, 'user-search-result-label');
+            if (user.display_name) label.append(el('strong', user.display_name));
+            label.append(el('span', '@' + user.username));
+            link.append(avatarEl(user.avatar_url), label);
+            results.append(link);
+          });
+        } catch (error) {
+          if (currentRequest !== requestId) return;
+          console.error('Could not search people:', error);
+          status.textContent = 'Could not search. Please try again.';
+        }
+      };
     }
 
     function renderTabs() {
@@ -1716,6 +2085,63 @@
       const age = el('input'); age.type = 'number'; age.min = 13; age.max = 120;
       age.value = pr.age == null ? '' : pr.age;
       const loc = el('input'); loc.type = 'text'; loc.maxLength = 60; loc.value = pr.location || '';
+      loc.placeholder = 'Start typing a city, region or country';
+      loc.autocomplete = 'off';
+      const locationWrap = el('div', undefined, 'location-search-wrap');
+      const locationResults = el('div', undefined, 'location-search-results');
+      locationResults.hidden = true;
+      locationWrap.append(loc, locationResults);
+      let locationSearchTimer = null;
+      let locationSearchId = 0;
+      loc.addEventListener('input', () => {
+        clearTimeout(locationSearchTimer);
+        const term = loc.value.trim();
+        if (term.length < 2) { locationResults.hidden = true; locationResults.replaceChildren(); return; }
+        locationSearchTimer = setTimeout(async () => {
+          const requestId = ++locationSearchId;
+          locationResults.hidden = false;
+          locationResults.replaceChildren(el('p', 'Searching locations…', 'note'));
+          try {
+            const response = await fetch('/api/locations/search?q=' + encodeURIComponent(term));
+            if (requestId !== locationSearchId) return;
+            if (!response.ok) throw new Error('Location search is temporarily unavailable.');
+            const places = await response.json();
+            locationResults.replaceChildren();
+            if (!places.length) locationResults.append(el('p', 'No matching places. You can keep typing your own location.', 'note'));
+            places.forEach(place => {
+              const option = el('button', place.label); option.type = 'button';
+              option.onclick = () => { loc.value = place.label; locationResults.hidden = true; locationResults.replaceChildren(); };
+              locationResults.append(option);
+            });
+          } catch (error) {
+            if (requestId === locationSearchId) locationResults.replaceChildren(el('p', error.message, 'note'));
+          }
+        }, 600);
+      });
+      const dob = el('input'); dob.type = 'date'; dob.value = pr.date_of_birth || '';
+      const maxDob = new Date(); maxDob.setFullYear(maxDob.getFullYear() - 13);
+      dob.max = maxDob.toISOString().slice(0, 10); dob.min = '1900-01-01';
+      const company = el('input'); company.type = 'text'; company.maxLength = 100; company.placeholder = 'Company or organization'; company.value = pr.company_name || '';
+      const designation = el('input'); designation.type = 'text'; designation.maxLength = 100; designation.placeholder = 'Role or title'; designation.value = pr.designation || '';
+      const contactEmail = el('input'); contactEmail.type = 'email'; contactEmail.maxLength = 254; contactEmail.autocomplete = 'email'; contactEmail.value = pr.contact_email || '';
+      const phone = el('input'); phone.type = 'tel'; phone.maxLength = 30; phone.autocomplete = 'tel'; phone.value = pr.phone_number || '';
+      const instagram = el('input'); instagram.type = 'text'; instagram.maxLength = 60; instagram.placeholder = '@username'; instagram.value = pr.instagram_handle || '';
+      const facebook = el('input'); facebook.type = 'text'; facebook.maxLength = 60; facebook.placeholder = 'profile name'; facebook.value = pr.facebook_handle || '';
+      const tiktok = el('input'); tiktok.type = 'text'; tiktok.maxLength = 60; tiktok.placeholder = '@username'; tiktok.value = pr.tiktok_handle || '';
+      const linkedin = el('input'); linkedin.type = 'text'; linkedin.maxLength = 100; linkedin.placeholder = 'profile slug'; linkedin.value = pr.linkedin_handle || '';
+      const visibility = value => {
+        const select = el('select');
+        [['everyone', 'Everyone'], ['friends', 'Friends (mutual follows)'], ['self', 'Only me']].forEach(([key, label]) => {
+          const option = el('option', label); option.value = key; select.append(option);
+        });
+        select.value = value || 'self';
+        return select;
+      };
+      const birthdayVisibility = visibility(pr.birthday_visibility);
+      const workVisibility = visibility(pr.work_visibility);
+      const emailVisibility = visibility(pr.email_visibility);
+      const phoneVisibility = visibility(pr.phone_visibility);
+      const socialVisibility = visibility(pr.social_visibility);
       const mood = el('select');
       [
         ['', 'Prefer not to say'],
@@ -1751,7 +2177,22 @@
         fieldBox('Display name (max 50 characters)', dn),
         fieldBox('Bio (max 300 characters)', bio),
         fieldBox('Age (13-120)', age),
-        fieldBox('Location (max 60 characters, a city is plenty)', loc),
+        fieldBox('Location (search worldwide or type your own)', locationWrap),
+        el('p', 'Location search powered by OpenStreetMap data via Photon.', 'note'),
+        fieldBox('Birthday (kept private by default)', dob),
+        fieldBox('Birthday visibility', birthdayVisibility),
+        fieldBox('Company', company),
+        fieldBox('Designation', designation),
+        fieldBox('Work visibility', workVisibility),
+        fieldBox('Contact email', contactEmail),
+        fieldBox('Email visibility', emailVisibility),
+        fieldBox('Phone number', phone),
+        fieldBox('Phone visibility', phoneVisibility),
+        fieldBox('Instagram handle', instagram),
+        fieldBox('Facebook handle', facebook),
+        fieldBox('TikTok handle', tiktok),
+        fieldBox('LinkedIn profile name', linkedin),
+        fieldBox('Social handles visibility', socialVisibility),
         fieldBox('Current mood (optional)', mood),
         fieldBox('Interests (separate with commas)', ints),
         fieldBox('Relationship status', rel),
@@ -1764,7 +2205,21 @@
           display_name: dn.value,
           bio: bio.value,
           age: age.value === '' ? null : parseInt(age.value, 10),
+          date_of_birth: dob.value || null,
+          birthday_visibility: birthdayVisibility.value,
           location: loc.value,
+          company_name: company.value,
+          designation: designation.value,
+          work_visibility: workVisibility.value,
+          contact_email: contactEmail.value,
+          email_visibility: emailVisibility.value,
+          phone_number: phone.value,
+          phone_visibility: phoneVisibility.value,
+          instagram_handle: instagram.value.replace(/^@/, ''),
+          facebook_handle: facebook.value.replace(/^@/, ''),
+          tiktok_handle: tiktok.value.replace(/^@/, ''),
+          linkedin_handle: linkedin.value.replace(/^@/, ''),
+          social_visibility: socialVisibility.value,
           mood: mood.value,
           interests: ints.value,
           relationship_status: rel.value,
@@ -1775,7 +2230,7 @@
           body: JSON.stringify(body),
         });
         if (r.ok) showProfile(pr.username);
-        else if (r.status === 400) msg.textContent = 'Please check: age must be 13-120 and text must be within the length limits';
+        else if (r.status === 400) msg.textContent = 'Please check your birthday, email, phone, social handles and text lengths.';
         else if (r.status === 401) msg.textContent = 'Please log in again';
         else msg.textContent = 'Something went wrong';
       };
@@ -2189,6 +2644,39 @@
       if (pr.relationship_status) details.append(el('span', '💬 ' + pr.relationship_status));
       if (details.childNodes.length) view.append(details);
 
+      const contactDetails = el('div', undefined, 'profile-contact');
+      let hasContactDetails = false;
+      if (pr.date_of_birth) {
+        const birthday = new Date(pr.date_of_birth + 'T00:00:00');
+        contactDetails.append(el('span', '🎂 Birthday · ' + birthday.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })));
+        hasContactDetails = true;
+      }
+      if (pr.company_name || pr.designation) {
+        contactDetails.append(el('span', '💼 ' + [pr.designation, pr.company_name].filter(Boolean).join(' at ')));
+        hasContactDetails = true;
+      }
+      if (pr.contact_email) {
+        const email = el('a', '✉ ' + pr.contact_email); email.href = 'mailto:' + pr.contact_email;
+        contactDetails.append(email); hasContactDetails = true;
+      }
+      if (pr.phone_number) {
+        const phone = el('a', '☎ ' + pr.phone_number); phone.href = 'tel:' + pr.phone_number.replace(/[^+\d]/g, '');
+        contactDetails.append(phone); hasContactDetails = true;
+      }
+      const socialLinks = [
+        ['Instagram', pr.instagram_handle, 'https://www.instagram.com/'],
+        ['Facebook', pr.facebook_handle, 'https://www.facebook.com/'],
+        ['TikTok', pr.tiktok_handle, 'https://www.tiktok.com/@'],
+        ['LinkedIn', pr.linkedin_handle, 'https://www.linkedin.com/in/'],
+      ];
+      socialLinks.forEach(([label, handle, base]) => {
+        if (!handle) return;
+        const link = el('a', label + ' · @' + handle); link.href = base + encodeURIComponent(handle);
+        link.target = '_blank'; link.rel = 'noopener noreferrer';
+        contactDetails.append(link); hasContactDetails = true;
+      });
+      if (hasContactDetails) view.append(contactDetails);
+
       if (pr.interests) {
         const tags = pr.interests.split(',').map(s => s.trim()).filter(Boolean).slice(0, 15);
         if (tags.length) {
@@ -2324,6 +2812,10 @@
     async function renderAuth() {
       const box = document.getElementById('auth');
       box.textContent = '';
+      try {
+        const statusResponse = await fetch('/api/status');
+        if (statusResponse.ok) appEnabled = await statusResponse.json();
+      } catch { appEnabled = true; }
       const res = await fetch('/api/me');
       loggedIn = res.ok;
       renderComposer();
@@ -2331,19 +2823,23 @@
       if (res.ok) {
         const me = await res.json();
         currentUsername = me.username;
+        currentIsAdmin = me.is_admin;
+        currentIsSuperadmin = me.is_superadmin;
         setHomeCover(
           me.cover_image_url,
           me.cover_position_x,
           me.cover_position_y,
           me.cover_zoom,
         );
-        const search = el('a', 'Search', 'inbox-link');
-        search.href = '#/search';
-        const inbox = el('a', 'Messages', 'inbox-link');
+        const inbox = el('a', 'Chats', 'inbox-link');
         inbox.href = '#/inbox';
+        const friends = el('a', 'Friends', 'inbox-link');
+        friends.href = '#/friends';
+        const communities = el('a', 'Community', 'inbox-link');
+        communities.href = '#/community';
         const settings = el('a', 'Settings', 'inbox-link');
         settings.href = '#/settings';
-        if (me.is_admin) {
+        if (me.is_admin && (appEnabled || me.is_superadmin)) {
           const admin = el('a', 'Admin hub', 'inbox-link admin-link');
           admin.href = '#/admin';
           box.append(admin);
@@ -2356,9 +2852,11 @@
         };
         const mine = userLink('@' + me.username);
         mine.href = '#/u/' + encodeURIComponent(me.username);
-        box.append(search, inbox, settings, mine, out);
+        box.append(inbox, friends, communities, settings, mine, out);
       } else {
         currentUsername = '';
+        currentIsAdmin = false;
+        currentIsSuperadmin = false;
         setHomeCover(null);
         const u = el('input'); u.placeholder = 'username';
         const p = el('input'); p.placeholder = 'password'; p.type = 'password';
@@ -2377,6 +2875,13 @@
         login.onclick = () => submit('/api/login');
         box.append(u, p, login, signup, msg);
       }
+      if (!appEnabled && !currentIsSuperadmin) {
+        ['homeView', 'profileView', 'inboxView', 'friendsView', 'communityView', 'userSearchView', 'settingsView', 'signupView', 'adminView']
+          .forEach(id => { document.getElementById(id).hidden = true; });
+        document.getElementById('appPausedView').hidden = false;
+        return;
+      }
+      document.getElementById('appPausedView').hidden = true;
       const mapForm = document.getElementById('checkinForm'); if (mapForm) { mapForm.hidden = !loggedIn || !selectedMapPoint;
       document.getElementById('checkinLoginHint').hidden = loggedIn;
       document.getElementById('shareLocationButton').hidden = !loggedIn; }
@@ -2402,7 +2907,7 @@
       view.textContent = '';
       stopInboxPolling();
 
-      view.append(el('h1', 'Messages', 'inbox-title'));
+      view.append(el('h1', 'Chats', 'inbox-title'));
       if (!loggedIn) {
         view.append(el('p', 'Log in to start a private conversation.', 'empty'));
         return;
@@ -2425,13 +2930,26 @@
       recipientSuggestions.setAttribute('role', 'listbox');
       const selectedRecipients = el('div', undefined, 'selected-recipients');
       const selectedUsernames = new Set();
+      let groupMode = false;
       const titleInput = el('input');
       titleInput.type = 'text';
-      titleInput.placeholder = 'Group name (optional)';
+      titleInput.placeholder = 'Group name';
       titleInput.maxLength = 60;
+      titleInput.hidden = true;
+      const groupModeButton = el('button', 'Create group');
+      groupModeButton.type = 'button';
+      groupModeButton.onclick = () => {
+        groupMode = true;
+        titleInput.hidden = false;
+        createSubmit.textContent = 'Create group';
+        groupModeButton.hidden = true;
+        createError.textContent = 'Select at least two people for a group chat.';
+        recipientInput.focus();
+      };
       const createError = el('span', undefined, 'hint');
       const createSubmit = el('button', 'Start chat');
       createForm.append(
+        groupModeButton,
         recipientInput,
         recipientSuggestions,
         el('span', 'Type at least 2 letters, then select a matching username.', 'hint'),
@@ -2442,8 +2960,9 @@
       );
       let searchRequest = 0;
       function addRecipient(username) {
-        if (selectedUsernames.size >= 9) {
-          createError.textContent = 'You can add up to 9 people.';
+        const maxRecipients = groupMode ? 9 : 1;
+        if (selectedUsernames.size >= maxRecipients) {
+          createError.textContent = groupMode ? 'You can add up to 9 people.' : 'Choose Create group to add more than one person.';
           return;
         }
         selectedUsernames.add(username);
@@ -2520,14 +3039,23 @@
       }
       newButton.onclick = () => {
         createForm.hidden = !createForm.hidden;
+        if (!createForm.hidden) {
+          groupMode = false;
+          titleInput.hidden = true;
+          titleInput.value = '';
+          groupModeButton.hidden = false;
+          selectedUsernames.clear();
+          renderSelectedRecipients();
+          createError.textContent = '';
+        }
         createSubmit.textContent = 'Start chat';
         if (!createForm.hidden) recipientInput.focus();
       };
       createForm.onsubmit = async event => {
         event.preventDefault();
         const usernames = Array.from(selectedUsernames);
-        if (usernames.length === 0) {
-          createError.textContent = 'Search for and select at least one person.';
+        if (usernames.length === 0 || (groupMode && usernames.length < 2)) {
+          createError.textContent = groupMode ? 'Select at least two people for a group chat.' : 'Search for and select one person.';
           return;
         }
         createSubmit.disabled = true;
@@ -2544,6 +3072,9 @@
             renderSelectedRecipients();
             recipientInput.value = '';
             titleInput.value = '';
+            groupMode = false;
+            titleInput.hidden = true;
+            groupModeButton.hidden = false;
             createForm.hidden = true;
             chat.hidden = false;
             chat.classList.add('chat-window');
@@ -2598,6 +3129,9 @@
         active.members.filter(name => name !== currentUsername).forEach(name => selectedUsernames.add(name));
         renderSelectedRecipients();
         titleInput.value = '';
+        groupMode = true;
+        titleInput.hidden = false;
+        groupModeButton.hidden = true;
         createForm.hidden = false;
         createSubmit.textContent = 'Create group';
         chatMenu.open = false;
@@ -2622,6 +3156,74 @@
         chat.classList.remove('chat-window');
         await loadConversations();
       };
+      const renameGroupAction = el('button', 'Rename group');
+      renameGroupAction.type = 'button';
+      renameGroupAction.onclick = async () => {
+        const active = cachedConversations.find(item => item.id === activeConversationId);
+        if (!active?.is_owner) return;
+        const title = prompt('Enter a name for this group:', active.title || '');
+        if (title === null || !title.trim()) return;
+        const response = await fetch('/api/conversations/' + active.id, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: title.trim() }),
+        });
+        if (!response.ok) { alert('Could not rename this group.'); return; }
+        chatMenu.open = false;
+        await loadConversations();
+      };
+      const viewMembersAction = el('button', 'View group members');
+      viewMembersAction.type = 'button';
+      viewMembersAction.onclick = async () => {
+        if (!activeConversationId) return;
+        const response = await fetch('/api/conversations/' + activeConversationId + '/members');
+        if (!response.ok) { alert('Could not load group members.'); return; }
+        const members = await response.json();
+        alert('Group members:\n' + members.map(member => '@' + member.username + (member.is_owner ? ' (owner)' : '')).join('\n'));
+        chatMenu.open = false;
+      };
+      const removeGroupMemberAction = el('button', 'Remove a member');
+      removeGroupMemberAction.type = 'button';
+      removeGroupMemberAction.onclick = async () => {
+        const active = cachedConversations.find(item => item.id === activeConversationId);
+        if (!active?.is_owner) return;
+        const response = await fetch('/api/conversations/' + active.id + '/members');
+        if (!response.ok) { alert('Could not load group members.'); return; }
+        const members = (await response.json()).filter(member => !member.is_owner);
+        if (!members.length) { alert('There are no other group members to remove.'); return; }
+        const usernames = members.map(member => member.username);
+        const username = prompt('Enter the username to remove:\n' + usernames.map(name => '@' + name).join('\n'));
+        if (username === null) return;
+        const member = members.find(item => item.username.toLowerCase() === username.trim().replace(/^@/, '').toLowerCase());
+        if (!member) { alert('That username is not a removable member of this group.'); return; }
+        if (!confirm('Remove @' + member.username + ' from this group?')) return;
+        const removed = await fetch('/api/conversations/' + active.id + '/members/' + member.id, { method: 'DELETE' });
+        if (!removed.ok) { alert('Could not remove that member.'); return; }
+        chatMenu.open = false;
+        await loadConversations();
+      };
+      const clearGroupMessagesAction = el('button', 'Delete all group messages');
+      clearGroupMessagesAction.type = 'button';
+      clearGroupMessagesAction.onclick = async () => {
+        const active = cachedConversations.find(item => item.id === activeConversationId);
+        if (!active?.is_owner || !confirm('Permanently delete every message in this group?')) return;
+        const response = await fetch('/api/conversations/' + active.id + '/messages', { method: 'DELETE' });
+        if (!response.ok) { alert('Could not delete the group messages.'); return; }
+        chatMenu.open = false;
+        await loadConversations();
+        await loadMessages(active.id);
+      };
+      const deleteGroupAction = el('button', 'Delete group chat');
+      deleteGroupAction.type = 'button';
+      deleteGroupAction.onclick = async () => {
+        const active = cachedConversations.find(item => item.id === activeConversationId);
+        if (!active?.is_owner || !confirm('Delete this group and its messages for every member? This cannot be undone.')) return;
+        const response = await fetch('/api/conversations/' + active.id + '/group', { method: 'DELETE' });
+        if (!response.ok) { alert('Could not delete the group.'); return; }
+        chatMenu.open = false;
+        activeConversationId = null;
+        chat.hidden = true;
+        chat.classList.remove('chat-window');
+        await loadConversations();
+      };
       const reportChatAction = el('button', 'Report chat');
       reportChatAction.type = 'button';
       reportChatAction.onclick = async () => {
@@ -2633,8 +3235,24 @@
         chatMenu.open = false;
         alert(response.ok ? 'Your report was sent to the admin team.' : 'Could not report this chat.');
       };
-      chatMenuItems.append(makeGroupAction, viewProfileAction, deleteChatAction, reportChatAction);
+      chatMenuItems.append(makeGroupAction, renameGroupAction, viewMembersAction, removeGroupMemberAction,
+        clearGroupMessagesAction, deleteGroupAction, viewProfileAction, deleteChatAction, reportChatAction);
+      function updateChatMenuActions() {
+        const active = cachedConversations.find(item => item.id === activeConversationId);
+        const isGroup = Boolean(active?.is_group);
+        makeGroupAction.hidden = !active;
+        renameGroupAction.hidden = !isGroup || !active.is_owner;
+        viewMembersAction.hidden = !isGroup;
+        removeGroupMemberAction.hidden = !isGroup || !active.is_owner;
+        clearGroupMessagesAction.hidden = !isGroup || !active.is_owner;
+        deleteGroupAction.hidden = !isGroup || !active.is_owner;
+        viewProfileAction.hidden = isGroup || !active;
+        deleteChatAction.hidden = !active || (isGroup && Boolean(active.is_owner));
+        reportChatAction.hidden = !active;
+        deleteChatAction.textContent = isGroup ? 'Leave group chat' : 'Delete chat from my inbox';
+      }
       chatMenu.append(chatMenuSummary, chatMenuItems);
+      updateChatMenuActions();
       const closeChat = el('button', '×');
       closeChat.type = 'button'; closeChat.setAttribute('aria-label', 'Close chat');
       closeChat.onclick = () => { chat.hidden = true; chat.classList.remove('chat-window'); };
@@ -2652,19 +3270,85 @@
       imageInput.accept = 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm';
       const emojiButton = el('button', '☺', 'media-tool'); emojiButton.type = 'button'; emojiButton.title = 'Add emoji';
       const gifButton = el('button', 'GIF', 'media-tool'); gifButton.type = 'button'; gifButton.title = 'Choose a GIF';
+      const stickerButton = el('button', '▧', 'media-tool'); stickerButton.type = 'button'; stickerButton.title = 'Choose a sticker'; stickerButton.setAttribute('aria-label', 'Choose a sticker');
       const plusButton = el('button', '+', 'media-tool'); plusButton.type = 'button'; plusButton.title = 'Add a photo or video';
       const emojiTray = el('div', undefined, 'emoji-tray'); emojiTray.hidden = true;
+      const mediaPicker = el('section', undefined, 'chat-media-picker'); mediaPicker.hidden = true;
+      const pickerHead = el('div', undefined, 'chat-media-picker-head');
+      const mediaSearch = el('input'); mediaSearch.type = 'search'; mediaSearch.placeholder = 'Search GIFs'; mediaSearch.setAttribute('aria-label', 'Search GIFs or stickers');
+      const mediaSearchButton = el('button', 'Search'); mediaSearchButton.type = 'button';
+      pickerHead.append(mediaSearch, mediaSearchButton);
+      const mediaStatus = el('p', 'Search online GIFs and stickers to send.', 'chat-media-status');
+      const mediaResults = el('div', undefined, 'chat-media-results');
+      mediaPicker.append(pickerHead, mediaStatus, mediaResults);
       ['😀', '😂', '🥰', '😍', '😊', '😉', '😭', '😎', '🤗', '❤️', '👍', '🎉', '🙏', '🔥', '✨', '💬'].forEach(emoji => {
         const pick = el('button', emoji); pick.type = 'button';
         pick.onclick = () => { messageInput.value += emoji; messageInput.focus(); };
         emojiTray.append(pick);
       });
       emojiButton.onclick = () => { emojiTray.hidden = !emojiTray.hidden; };
-      gifButton.onclick = () => { imageInput.accept = 'image/gif'; imageInput.click(); };
+      let mediaKind = 'gifs';
+      async function searchChatMedia() {
+        const query = mediaSearch.value.trim();
+        if (query.length < 1) { mediaStatus.textContent = 'Enter a search term.'; return; }
+        mediaSearchButton.disabled = true;
+        mediaStatus.textContent = 'Searching…';
+        mediaResults.replaceChildren();
+        try {
+          const response = await fetch('/api/chat-media/search?q=' + encodeURIComponent(query) + '&kind=' + mediaKind);
+          if (response.status === 503) throw new Error('Online media search is temporarily unavailable.');
+          if (response.status === 502) throw new Error('GIPHY could not be reached or rejected the API key. Check the key and server internet connection.');
+          if (response.status === 404) throw new Error('Restart the Rust app so it loads the GIF and sticker search endpoint.');
+          if (response.status === 401) throw new Error('Please log in again to search GIFs and stickers.');
+          if (!response.ok) throw new Error('GIF search failed (server status ' + response.status + ').');
+          const results = await response.json();
+          if (!results.length) { mediaStatus.textContent = 'No results found.'; return; }
+          const commonsResults = results.some(result => result.media_url.includes('wikimedia.org'));
+          mediaStatus.textContent = commonsResults ? 'Choose one to send · Wikimedia Commons' : 'Choose one to send · GIPHY';
+          results.forEach(result => {
+            const pick = el('button'); pick.type = 'button'; pick.title = result.title || 'Send media';
+            const preview = el('img'); preview.src = result.preview_url; preview.alt = result.title || (mediaKind === 'stickers' ? 'Sticker' : 'GIF'); preview.loading = 'lazy';
+            pick.append(preview);
+            pick.onclick = () => sendRemoteMedia(result.media_url);
+            const tile = el('div', undefined, 'chat-media-tile'); tile.append(pick);
+            if (result.source_url && result.media_url.includes('wikimedia.org')) { const credit = el('a', 'Source', 'chat-media-credit'); credit.href = result.source_url; credit.target = '_blank'; credit.rel = 'noopener noreferrer'; tile.append(credit); }
+            mediaResults.append(tile);
+          });
+        } catch (error) { mediaStatus.textContent = error.message; }
+        finally { mediaSearchButton.disabled = false; }
+      }
+      async function openMediaPicker(kind) {
+        mediaKind = kind;
+        mediaSearch.placeholder = kind === 'stickers' ? 'Search stickers' : 'Search GIFs';
+        mediaPicker.hidden = false;
+        emojiTray.hidden = true;
+        mediaSearch.focus();
+        if (!mediaResults.childElementCount) {
+          if (!mediaSearch.value.trim()) mediaSearch.value = 'trending';
+          await searchChatMedia();
+        }
+      }
+      async function sendRemoteMedia(url) {
+        if (activeConversationId === null) { messageHint.textContent = 'Choose a conversation first.'; return; }
+        const data = new FormData(); data.append('body', messageInput.value); data.append('remote_media_url', url);
+        sendButton.disabled = true; messageHint.textContent = 'Sending…';
+        try {
+          const response = await fetch('/api/conversations/' + activeConversationId + '/messages', { method: 'POST', body: data });
+          if (!response.ok) throw new Error(response.status === 403 ? 'This chat is muted by an administrator.' : 'Could not send this media.');
+          messageInput.value = ''; mediaPicker.hidden = true; mediaResults.replaceChildren();
+          messageHint.textContent = 'Photos, GIFs, and videos up to 50 MB. Messages refresh every 5 seconds.';
+          await loadConversations(); await loadMessages(activeConversationId);
+        } catch (error) { messageHint.textContent = error.message; }
+        finally { sendButton.disabled = false; }
+      }
+      gifButton.onclick = () => openMediaPicker('gifs');
+      stickerButton.onclick = () => openMediaPicker('stickers');
+      mediaSearchButton.onclick = searchChatMedia;
+      mediaSearch.onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); searchChatMedia(); } };
       plusButton.onclick = () => { imageInput.accept = 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm'; imageInput.click(); };
       const sendButton = el('button', 'Send');
       sendButton.type = 'submit';
-      messageForm.append(emojiButton, gifButton, plusButton, messageInput, imageInput, sendButton);
+      messageForm.append(emojiButton, gifButton, stickerButton, plusButton, messageInput, imageInput, sendButton);
       const messageHint = el('p', 'Photos, GIFs, and videos up to 50 MB. Messages refresh every 5 seconds.', 'inbox-note');
       messageForm.onsubmit = async event => {
         event.preventDefault();
@@ -2701,6 +3385,8 @@
             messageHint.textContent = 'Write a message up to 2,000 characters, or attach a picture.';
           } else if (response.status === 401) {
             messageHint.textContent = 'Please log in again.';
+          } else if (response.status === 403) {
+            messageHint.textContent = 'This chat has been muted by an administrator.';
           } else if (response.status === 404) {
             messageHint.textContent = 'This conversation is no longer available. Select it again or start a new chat.';
           } else {
@@ -2714,7 +3400,7 @@
           sendButton.textContent = 'Send';
         }
       };
-      chat.append(heading, messageList, emojiTray, messageForm, messageHint);
+      chat.append(heading, messageList, emojiTray, mediaPicker, messageForm, messageHint);
       layout.append(sidebar, chat);
       view.append(layout);
 
@@ -2732,12 +3418,14 @@
           return;
         }
         cachedConversations = await response.json();
+        updateChatMenuActions();
         conversationList.textContent = '';
         if (cachedConversations.length === 0) {
           conversationList.append(el('p', 'Your conversations will appear here.', 'activity-empty'));
           activeConversationId = null;
           headingTitle.textContent = 'Choose a conversation';
           messageList.replaceChildren(el('p', 'Start a chat to say hello.', 'message-empty'));
+          messageInput.disabled = false; sendButton.disabled = false;
           return;
         }
         if (!cachedConversations.some(conversation => conversation.id === activeConversationId)) {
@@ -2748,7 +3436,13 @@
           const active = cachedConversations.find(conversation => conversation.id === activeConversationId);
           if (active) headingTitle.textContent = active.title ||
             active.members.filter(name => name !== currentUsername).join(', ') || 'Conversation';
+          const muted = Boolean(active?.is_muted);
+          messageInput.disabled = muted;
+          sendButton.disabled = muted;
+          emojiButton.disabled = muted; gifButton.disabled = muted; stickerButton.disabled = muted; plusButton.disabled = muted;
+          messageHint.textContent = muted ? 'This chat has been muted by an administrator. You can still view its messages.' : 'Photos, GIFs, and videos up to 50 MB. Messages refresh every 5 seconds.';
         }
+        updateChatMenuActions();
       }
 
       function renderConversationItems() {
@@ -2772,6 +3466,7 @@
           const title = conversation.title ||
             conversation.members.filter(name => name !== currentUsername).join(', ');
           const name = el('span', title || 'Conversation', 'conversation-name');
+          if (conversation.is_muted) name.append(el('span', ' · Muted', 'conversation-unread'));
           if (conversation.unread_count > 0) name.append(el('span', String(conversation.unread_count), 'conversation-unread'));
           copy.append(name, el('span', conversation.latest_message || 'No messages yet', 'conversation-preview'));
           item.append(avatar, copy);
@@ -2824,6 +3519,19 @@
             }
           }
           bubble.append(el('span', new Date(message.created_at).toLocaleString(), 'message-time'));
+          if (message.can_delete) {
+            const remove = el('button', 'Delete', 'message-delete');
+            remove.type = 'button';
+            remove.title = 'Delete this message';
+            remove.onclick = async () => {
+              if (!confirm('Delete this message?')) return;
+              const result = await fetch('/api/conversations/' + conversationId + '/messages/' + message.id, { method: 'DELETE' });
+              if (!result.ok) { alert('Could not delete this message.'); return; }
+              await loadConversations();
+              await loadMessages(conversationId);
+            };
+            bubble.append(remove);
+          }
           messageList.append(bubble);
         });
         messageList.scrollTop = messageList.scrollHeight;
@@ -3752,6 +4460,7 @@
     window.addEventListener('hashchange', route);
     setupHomeCover();
     initCommunityMap();
+    setupSidebarPeopleSearch();
     renderAuth();
   </script>
 <script>

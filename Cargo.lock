@@ -936,6 +936,7 @@ dependencies = [
  "reqwest",
  "roxmltree",
  "serde",
+ "serde_json",
  "sqlx",
  "tokio",
  "tower-http 0.7.1",
