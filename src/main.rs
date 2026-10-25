@@ -361,9 +361,12 @@ struct CommunitySummary {
     id: i32,
     name: String,
     description: String,
+    image_url: Option<String>,
     owner: Option<String>,
     is_member: bool,
+    is_disabled: bool,
     is_owner: bool,
+    is_admin: bool,
     member_count: i64,
     created_at: String,
 }
@@ -372,6 +375,7 @@ struct CommunitySummary {
 struct CommunityPost {
     id: i64,
     username: String,
+    avatar_url: Option<String>,
     title: String,
     body: String,
     created_at: String,
@@ -393,12 +397,29 @@ struct CommunityMember {
     id: i32,
     username: String,
     is_owner: bool,
+    is_admin: bool,
+    enabled: bool,
 }
 
 #[derive(Deserialize)]
 struct NewCommunity {
     name: String,
     description: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct AddCommunityMember {
+    username: String,
+}
+
+#[derive(Deserialize)]
+struct CommunityMemberStatus {
+    enabled: bool,
+}
+
+#[derive(Deserialize)]
+struct CommunityMemberAdmin {
+    is_admin: bool,
 }
 
 #[derive(Deserialize)]
@@ -435,6 +456,8 @@ struct GridPost {
     id: i32,
     image_url: String,
     media_type: String,
+    caption: String,
+    created_at: String,
 }
 
 #[derive(Serialize, FromRow)]
@@ -485,6 +508,7 @@ struct ProfileRow {
     interests: Option<String>,
     relationship_status: Option<String>,
     avatar_url: Option<String>,
+    cover_image_url: Option<String>,
     post_count: i64,
     follower_count: i64,
     following_count: i64,
@@ -518,6 +542,7 @@ struct Profile {
     interests: Option<String>,
     relationship_status: Option<String>,
     avatar_url: Option<String>,
+    cover_image_url: Option<String>,
     post_count: i64,
     follower_count: i64,
     following_count: i64,
@@ -2805,6 +2830,7 @@ async fn profile(
                u.interests,
                u.relationship_status,
                u.avatar_url,
+               u.cover_image_url,
                (SELECT COUNT(*) FROM posts WHERE user_id = u.id) AS post_count,
                (SELECT COUNT(*) FROM follows WHERE followee_id = u.id) AS follower_count,
                (SELECT COUNT(*) FROM follows WHERE follower_id = u.id) AS following_count,
@@ -2853,7 +2879,7 @@ async fn profile(
     }
 
     let posts = sqlx::query_as::<_, GridPost>(
-        "SELECT id, image_url, media_type
+        "SELECT id, image_url, media_type, caption, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at
          FROM posts
          WHERE user_id = $1 AND reshared_from_id IS NULL
          ORDER BY id DESC",
@@ -2890,6 +2916,7 @@ async fn profile(
         interests: row.interests,
         relationship_status: row.relationship_status,
         avatar_url: row.avatar_url,
+        cover_image_url: row.cover_image_url,
         post_count: row.post_count,
         follower_count: row.follower_count,
         following_count: row.following_count,
@@ -4308,7 +4335,7 @@ async fn update_profile(
     let user_id = current_user_id(&pool, &headers).await?;
 
     let display_name = clean(p.display_name, 50)?;
-    let bio = clean(p.bio, 300)?;
+    let bio = clean(p.bio, 3500)?;
     let location = clean(p.location, 60)?;
     let mood = clean(p.mood, 20)?;
     let interests = clean(p.interests, 200)?;
@@ -4767,9 +4794,11 @@ async fn list_communities(
 ) -> Result<Json<Vec<CommunitySummary>>, StatusCode> {
     let user_id = current_user_id(&pool, &headers).await?;
     let groups = sqlx::query_as::<_, CommunitySummary>(
-        r#"SELECT c.id, c.name, c.description, owner.username AS owner,
-                  EXISTS (SELECT 1 FROM community_members mine WHERE mine.community_id = c.id AND mine.user_id = $1) AS is_member,
+        r#"SELECT c.id, c.name, c.description, c.image_url, owner.username AS owner,
+                  EXISTS (SELECT 1 FROM community_members mine WHERE mine.community_id = c.id AND mine.user_id = $1 AND mine.is_enabled) AS is_member,
+                  EXISTS (SELECT 1 FROM community_members mine WHERE mine.community_id = c.id AND mine.user_id = $1 AND NOT mine.is_enabled) AS is_disabled,
                   COALESCE(c.created_by = $1, FALSE) AS is_owner,
+                  EXISTS (SELECT 1 FROM community_members mine WHERE mine.community_id = c.id AND mine.user_id = $1 AND mine.is_enabled AND mine.is_admin) AS is_admin,
                   (SELECT COUNT(*) FROM community_members cm WHERE cm.community_id = c.id) AS member_count,
                   to_char(c.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at
            FROM communities c LEFT JOIN users owner ON owner.id = c.created_by
@@ -4830,7 +4859,7 @@ async fn create_community(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     let summary = sqlx::query_as::<_, CommunitySummary>(
-        r#"SELECT c.id, c.name, c.description, owner.username AS owner, TRUE AS is_member, TRUE AS is_owner,
+        r#"SELECT c.id, c.name, c.description, c.image_url, owner.username AS owner, TRUE AS is_member, FALSE AS is_disabled, TRUE AS is_owner, FALSE AS is_admin,
                   1::BIGINT AS member_count,
                   to_char(c.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at
            FROM communities c JOIN users owner ON owner.id = c.created_by WHERE c.id = $1"#,
@@ -4857,6 +4886,28 @@ async fn join_community(
     sqlx::query("INSERT INTO community_members (community_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
         .bind(community_id).bind(user_id).execute(&pool).await.map_err(|e| {
             eprintln!("community join failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    let enabled: bool = sqlx::query_scalar("SELECT is_enabled FROM community_members WHERE community_id = $1 AND user_id = $2")
+        .bind(community_id).bind(user_id).fetch_one(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !enabled { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn claim_community(
+    State(pool): State<PgPool>, headers: HeaderMap, Path(community_id): Path<i32>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let result = sqlx::query("UPDATE communities c SET created_by=$2 WHERE c.id=$1 AND c.created_by IS NULL AND EXISTS(SELECT 1 FROM community_members m WHERE m.community_id=c.id AND m.user_id=$2 AND m.is_enabled)")
+        .bind(community_id).bind(user_id).execute(&pool).await.map_err(|e| {
+            eprintln!("community ownership claim failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if result.rows_affected() == 0 {
+        let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM communities WHERE id=$1)").bind(community_id).fetch_one(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        return Err(if exists { StatusCode::CONFLICT } else { StatusCode::NOT_FOUND });
+    }
+    sqlx::query("INSERT INTO community_members (community_id,user_id,is_enabled) VALUES ($1,$2,TRUE) ON CONFLICT (community_id,user_id) DO UPDATE SET is_enabled=TRUE")
+        .bind(community_id).bind(user_id).execute(&pool).await.map_err(|e| {
+            eprintln!("claimed community membership update failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
         })?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -4913,26 +4964,126 @@ async fn update_community(
     Ok(StatusCode::NO_CONTENT)
 }
 
+async fn upload_community_image(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(community_id): Path<i32>,
+    mut multipart: Multipart,
+) -> Result<Json<AvatarInfo>, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let old: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT image_url FROM communities WHERE id = $1 AND created_by = $2",
+    )
+    .bind(community_id)
+    .bind(user_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("community image lookup failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let Some((old_url,)) = old else {
+        let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM communities WHERE id = $1)")
+            .bind(community_id)
+            .fetch_one(&pool)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        return Err(if exists { StatusCode::FORBIDDEN } else { StatusCode::NOT_FOUND });
+    };
+
+    let mut image: Option<(Vec<u8>, &'static str)> = None;
+    while let Some(field) = multipart.next_field().await.map_err(|_| StatusCode::BAD_REQUEST)? {
+        if field.name() == Some("image") {
+            let bytes = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+            if bytes.len() > 5 * 1024 * 1024 {
+                return Err(StatusCode::PAYLOAD_TOO_LARGE);
+            }
+            let ext = image_extension(&bytes).ok_or(StatusCode::UNSUPPORTED_MEDIA_TYPE)?;
+            image = Some((bytes.to_vec(), ext));
+        }
+    }
+    let (bytes, ext) = image.ok_or(StatusCode::BAD_REQUEST)?;
+    let url = save_image(&bytes, ext).await?;
+    let result = sqlx::query("UPDATE communities SET image_url = $1 WHERE id = $2 AND created_by = $3")
+        .bind(&url)
+        .bind(community_id)
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| {
+            eprintln!("community image update failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if result.rows_affected() == 0 {
+        remove_upload(&url).await;
+        return Err(StatusCode::FORBIDDEN);
+    }
+    if let Some(old_url) = old_url {
+        remove_upload(&old_url).await;
+    }
+    Ok(Json(AvatarInfo { avatar_url: url }))
+}
+
 async fn list_community_members(
     State(pool): State<PgPool>, headers: HeaderMap, Path(community_id): Path<i32>,
 ) -> Result<Json<Vec<CommunityMember>>, StatusCode> {
     let user_id = current_user_id(&pool, &headers).await?;
-    let is_member: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$2)")
-        .bind(community_id).bind(user_id).fetch_one(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let is_member: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$2 AND is_enabled)")
+        .bind(community_id).bind(user_id).fetch_one(&pool).await.map_err(|e| {
+            eprintln!("community membership check failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     if !is_member { return Err(StatusCode::FORBIDDEN); }
     let members = sqlx::query_as::<_, CommunityMember>(
-        "SELECT u.id, u.username, (u.id = c.created_by) AS is_owner FROM community_members cm JOIN users u ON u.id=cm.user_id JOIN communities c ON c.id=cm.community_id WHERE cm.community_id=$1 ORDER BY is_owner DESC, u.username",
+        "SELECT u.id, u.username, COALESCE(u.id = c.created_by, FALSE) AS is_owner, cm.is_admin, cm.is_enabled AS enabled FROM community_members cm JOIN users u ON u.id=cm.user_id JOIN communities c ON c.id=cm.community_id WHERE cm.community_id=$1 ORDER BY is_owner DESC, cm.is_admin DESC, u.username",
     ).bind(community_id).fetch_all(&pool).await.map_err(|e| {
         eprintln!("community members lookup failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
     })?;
     Ok(Json(members))
 }
 
+async fn add_community_member(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(community_id): Path<i32>,
+    Json(input): Json<AddCommunityMember>,
+) -> Result<StatusCode, StatusCode> {
+    let owner_id = current_user_id(&pool, &headers).await?;
+    let can_manage: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM communities c WHERE c.id=$1 AND (c.created_by=$2 OR EXISTS(SELECT 1 FROM community_members m WHERE m.community_id=c.id AND m.user_id=$2 AND m.is_enabled AND m.is_admin)))")
+        .bind(community_id).bind(owner_id).fetch_one(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !can_manage { return Err(StatusCode::FORBIDDEN); }
+    let username = input.username.trim();
+    if username.is_empty() || username.chars().count() > 30 { return Err(StatusCode::BAD_REQUEST); }
+    let member_id: Option<i32> = sqlx::query_scalar("SELECT id FROM users WHERE lower(username)=lower($1) AND account_enabled")
+        .bind(username).fetch_optional(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let Some(member_id) = member_id else { return Err(StatusCode::NOT_FOUND); };
+    sqlx::query("INSERT INTO community_members (community_id,user_id,is_enabled) VALUES ($1,$2,TRUE) ON CONFLICT (community_id,user_id) DO UPDATE SET is_enabled=TRUE")
+        .bind(community_id).bind(member_id).execute(&pool).await.map_err(|e| {
+            eprintln!("community member add failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn set_community_member_status(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path((community_id, member_id)): Path<(i32, i32)>,
+    Json(input): Json<CommunityMemberStatus>,
+) -> Result<StatusCode, StatusCode> {
+    let owner_id = current_user_id(&pool, &headers).await?;
+    let result = sqlx::query("UPDATE community_members cm SET is_enabled=$1 FROM communities c WHERE cm.community_id=c.id AND cm.community_id=$2 AND cm.user_id=$3 AND cm.user_id<>c.created_by AND NOT cm.is_admin AND (c.created_by=$4 OR EXISTS(SELECT 1 FROM community_members actor WHERE actor.community_id=c.id AND actor.user_id=$4 AND actor.is_enabled AND actor.is_admin))")
+        .bind(input.enabled).bind(community_id).bind(member_id).bind(owner_id).execute(&pool).await.map_err(|e| {
+            eprintln!("community member status update failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if result.rows_affected() == 0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn remove_community_member(
     State(pool): State<PgPool>, headers: HeaderMap, Path((community_id, member_id)): Path<(i32, i32)>,
 ) -> Result<StatusCode, StatusCode> {
     let user_id = current_user_id(&pool, &headers).await?;
-    let result = sqlx::query("DELETE FROM community_members cm USING communities c WHERE cm.community_id=c.id AND cm.community_id=$1 AND cm.user_id=$2 AND c.created_by=$3 AND cm.user_id<>c.created_by")
+    let result = sqlx::query("DELETE FROM community_members cm USING communities c WHERE cm.community_id=c.id AND cm.community_id=$1 AND cm.user_id=$2 AND cm.user_id<>c.created_by AND NOT cm.is_admin AND (c.created_by=$3 OR EXISTS(SELECT 1 FROM community_members actor WHERE actor.community_id=c.id AND actor.user_id=$3 AND actor.is_enabled AND actor.is_admin))")
         .bind(community_id).bind(member_id).bind(user_id).execute(&pool).await.map_err(|e| {
             eprintln!("community member removal failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
         })?;
@@ -4940,18 +5091,30 @@ async fn remove_community_member(
     Ok(StatusCode::NO_CONTENT)
 }
 
+async fn set_community_member_admin(
+    State(pool): State<PgPool>, headers: HeaderMap, Path((community_id, member_id)): Path<(i32, i32)>, Json(input): Json<CommunityMemberAdmin>,
+) -> Result<StatusCode, StatusCode> {
+    let owner_id = current_user_id(&pool, &headers).await?;
+    let result = sqlx::query("UPDATE community_members cm SET is_admin=$1 FROM communities c WHERE cm.community_id=c.id AND cm.community_id=$2 AND cm.user_id=$3 AND cm.user_id<>c.created_by AND c.created_by=$4")
+        .bind(input.is_admin).bind(community_id).bind(member_id).bind(owner_id).execute(&pool).await.map_err(|e| {
+            eprintln!("community moderator role update failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if result.rows_affected()==0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn list_community_posts(
     State(pool): State<PgPool>, headers: HeaderMap, Path(community_id): Path<i32>,
 ) -> Result<Json<Vec<CommunityPost>>, StatusCode> {
     let user_id = current_user_id(&pool, &headers).await?;
-    let member: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$2)")
+    let member: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$2 AND is_enabled)")
         .bind(community_id).bind(user_id).fetch_one(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     if !member { return Err(StatusCode::FORBIDDEN); }
     let posts = sqlx::query_as::<_, CommunityPost>(
-        r#"SELECT p.id, u.username, p.title, p.body,
+        r#"SELECT p.id, u.username, u.avatar_url, p.title, p.body,
                   to_char(p.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
                   (SELECT COUNT(*) FROM community_comments cc WHERE cc.post_id=p.id) AS comment_count,
-                  (p.user_id=$2 OR c.created_by=$2) AS can_delete
+                  (p.user_id=$2 OR c.created_by=$2 OR EXISTS(SELECT 1 FROM community_members mod WHERE mod.community_id=c.id AND mod.user_id=$2 AND mod.is_enabled AND mod.is_admin)) AS can_delete
            FROM community_posts p JOIN users u ON u.id=p.user_id JOIN communities c ON c.id=p.community_id
            WHERE p.community_id=$1 ORDER BY p.created_at DESC, p.id DESC LIMIT 200"#,
     ).bind(community_id).bind(user_id).fetch_all(&pool).await.map_err(|e| {
@@ -4966,7 +5129,7 @@ async fn create_community_post(
     let user_id = current_user_id(&pool, &headers).await?;
     let title=input.title.trim(); let body=input.body.trim();
     if title.is_empty() || title.chars().count()>120 || body.is_empty() || body.chars().count()>5000 { return Err(StatusCode::BAD_REQUEST); }
-    let result=sqlx::query("INSERT INTO community_posts(community_id,user_id,title,body) SELECT $1,$2,$3,$4 WHERE EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$2)")
+    let result=sqlx::query("INSERT INTO community_posts(community_id,user_id,title,body) SELECT $1,$2,$3,$4 WHERE EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$2 AND is_enabled)")
         .bind(community_id).bind(user_id).bind(title).bind(body).execute(&pool).await.map_err(|e| { eprintln!("community post create failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?;
     if result.rows_affected()==0 { return Err(StatusCode::FORBIDDEN); }
     Ok(StatusCode::CREATED)
@@ -4976,7 +5139,7 @@ async fn delete_community_post(
     State(pool): State<PgPool>, headers: HeaderMap, Path((community_id, post_id)): Path<(i32, i64)>,
 ) -> Result<StatusCode, StatusCode> {
     let user_id=current_user_id(&pool,&headers).await?;
-    let result=sqlx::query("DELETE FROM community_posts p USING communities c WHERE p.community_id=c.id AND p.community_id=$1 AND p.id=$2 AND (p.user_id=$3 OR c.created_by=$3)")
+    let result=sqlx::query("DELETE FROM community_posts p USING communities c WHERE p.community_id=c.id AND p.community_id=$1 AND p.id=$2 AND (p.user_id=$3 OR c.created_by=$3 OR EXISTS(SELECT 1 FROM community_members mod WHERE mod.community_id=c.id AND mod.user_id=$3 AND mod.is_enabled AND mod.is_admin))")
         .bind(community_id).bind(post_id).bind(user_id).execute(&pool).await.map_err(|e| { eprintln!("community post delete failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?;
     if result.rows_affected()==0 { return Err(StatusCode::FORBIDDEN); }
     Ok(StatusCode::NO_CONTENT)
@@ -4986,12 +5149,12 @@ async fn list_community_comments(
     State(pool): State<PgPool>, headers: HeaderMap, Path((community_id, post_id)): Path<(i32, i64)>,
 ) -> Result<Json<Vec<CommunityComment>>, StatusCode> {
     let user_id=current_user_id(&pool,&headers).await?;
-    let member:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$2)")
+    let member:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$2 AND is_enabled)")
         .bind(community_id).bind(user_id).fetch_one(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     if !member { return Err(StatusCode::FORBIDDEN); }
     let rows=sqlx::query_as::<_,CommunityComment>(
         r#"SELECT cc.id,u.username,cc.body,to_char(cc.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
-                  (cc.user_id=$3 OR c.created_by=$3) AS can_delete
+                  (cc.user_id=$3 OR c.created_by=$3 OR EXISTS(SELECT 1 FROM community_members mod WHERE mod.community_id=c.id AND mod.user_id=$3 AND mod.is_enabled AND mod.is_admin)) AS can_delete
            FROM community_comments cc JOIN users u ON u.id=cc.user_id JOIN communities c ON c.id=cc.community_id
            WHERE cc.community_id=$1 AND cc.post_id=$2 ORDER BY cc.created_at,cc.id"#
     ).bind(community_id).bind(post_id).bind(user_id).fetch_all(&pool).await.map_err(|e| { eprintln!("community comments lookup failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?;
@@ -5003,7 +5166,7 @@ async fn create_community_comment(
 ) -> Result<StatusCode, StatusCode> {
     let user_id=current_user_id(&pool,&headers).await?;
     let body=input.body.trim(); if body.is_empty() || body.chars().count()>2000 { return Err(StatusCode::BAD_REQUEST); }
-    let result=sqlx::query("INSERT INTO community_comments(community_id,post_id,user_id,body) SELECT $1,$2,$3,$4 WHERE EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$3) AND EXISTS(SELECT 1 FROM community_posts WHERE id=$2 AND community_id=$1)")
+    let result=sqlx::query("INSERT INTO community_comments(community_id,post_id,user_id,body) SELECT $1,$2,$3,$4 WHERE EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$3 AND is_enabled) AND EXISTS(SELECT 1 FROM community_posts WHERE id=$2 AND community_id=$1)")
         .bind(community_id).bind(post_id).bind(user_id).bind(body).execute(&pool).await.map_err(|e| { eprintln!("community comment create failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?;
     if result.rows_affected()==0 { return Err(StatusCode::FORBIDDEN); }
     Ok(StatusCode::CREATED)
@@ -5013,7 +5176,7 @@ async fn delete_community_comment(
     State(pool): State<PgPool>, headers: HeaderMap, Path((community_id, post_id, comment_id)): Path<(i32, i64, i64)>,
 ) -> Result<StatusCode, StatusCode> {
     let user_id=current_user_id(&pool,&headers).await?;
-    let result=sqlx::query("DELETE FROM community_comments cc USING communities c WHERE cc.community_id=c.id AND cc.community_id=$1 AND cc.post_id=$2 AND cc.id=$3 AND (cc.user_id=$4 OR c.created_by=$4)")
+    let result=sqlx::query("DELETE FROM community_comments cc USING communities c WHERE cc.community_id=c.id AND cc.community_id=$1 AND cc.post_id=$2 AND cc.id=$3 AND (cc.user_id=$4 OR c.created_by=$4 OR EXISTS(SELECT 1 FROM community_members mod WHERE mod.community_id=c.id AND mod.user_id=$4 AND mod.is_enabled AND mod.is_admin))")
         .bind(community_id).bind(post_id).bind(comment_id).bind(user_id).execute(&pool).await.map_err(|e| { eprintln!("community comment delete failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?;
     if result.rows_affected()==0 { return Err(StatusCode::FORBIDDEN); }
     Ok(StatusCode::NO_CONTENT)
@@ -5044,20 +5207,28 @@ async fn ensure_user_settings_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
             id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
             description TEXT NOT NULL DEFAULT '',
+            image_url TEXT,
             created_by INT REFERENCES users(id) ON DELETE SET NULL,
             created_at TIMESTAMPTZ NOT NULL DEFAULT now()
         )"#,
     ).execute(pool).await?;
+    sqlx::query("ALTER TABLE communities ADD COLUMN IF NOT EXISTS image_url TEXT")
+        .execute(pool).await?;
     sqlx::query("CREATE UNIQUE INDEX IF NOT EXISTS communities_name_lower_idx ON communities (lower(name))")
         .execute(pool).await?;
     sqlx::query(
         r#"CREATE TABLE IF NOT EXISTS community_members (
             community_id INT NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
             user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
             joined_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             PRIMARY KEY (community_id, user_id)
         )"#,
     ).execute(pool).await?;
+    sqlx::query("ALTER TABLE community_members ADD COLUMN IF NOT EXISTS is_enabled BOOLEAN NOT NULL DEFAULT TRUE")
+        .execute(pool).await?;
+    sqlx::query("ALTER TABLE community_members ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE")
+        .execute(pool).await?;
     sqlx::query(
         r#"CREATE TABLE IF NOT EXISTS community_posts (
             id BIGSERIAL PRIMARY KEY,
@@ -5547,9 +5718,16 @@ async fn main() {
         .route("/api/me/friends", get(list_friends))
         .route("/api/communities", get(list_communities).post(create_community))
         .route("/api/communities/{id}", put(update_community).delete(delete_community))
+        .route(
+            "/api/communities/{id}/image",
+            post(upload_community_image).layer(DefaultBodyLimit::max(5 * 1024 * 1024 + 64 * 1024)),
+        )
         .route("/api/communities/{id}/join", post(join_community).delete(leave_community))
-        .route("/api/communities/{id}/members", get(list_community_members))
+        .route("/api/communities/{id}/claim", post(claim_community))
+        .route("/api/communities/{id}/members", get(list_community_members).post(add_community_member))
         .route("/api/communities/{id}/members/{member_id}", delete(remove_community_member))
+        .route("/api/communities/{id}/members/{member_id}/status", put(set_community_member_status))
+        .route("/api/communities/{id}/members/{member_id}/admin", put(set_community_member_admin))
         .route("/api/communities/{id}/posts", get(list_community_posts).post(create_community_post))
         .route("/api/communities/{id}/posts/{post_id}", delete(delete_community_post))
         .route("/api/communities/{id}/posts/{post_id}/comments", get(list_community_comments).post(create_community_comment))
