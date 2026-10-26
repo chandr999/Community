@@ -1,0 +1,512 @@
+﻿struct ActiveUser {
+    username: String,
+    avatar_url: Option<String>,
+    mood: Option<String>,
+}
+
+struct ConversationSummary {
+    id: i32,
+    title: Option<String>,
+    is_group: bool,
+    is_owner: bool,
+    is_muted: bool,
+    members: Vec<String>,
+    latest_message: Option<String>,
+    latest_message_at: Option<String>,
+    unread_count: i64,
+}
+
+struct AdminUser {
+    id: i32,
+    username: String,
+    email: Option<String>,
+    phone_number: Option<String>,
+    date_of_birth: Option<String>,
+    company_name: Option<String>,
+    designation: Option<String>,
+    contact_email: Option<String>,
+    instagram_handle: Option<String>,
+    facebook_handle: Option<String>,
+    tiktok_handle: Option<String>,
+    linkedin_handle: Option<String>,
+    birthday_visibility: String,
+    work_visibility: String,
+    email_visibility: String,
+    phone_visibility: String,
+    social_visibility: String,
+    display_name: Option<String>,
+    age: Option<i32>,
+    bio: Option<String>,
+    location: Option<String>,
+    mood: Option<String>,
+    interests: Option<String>,
+    relationship_status: Option<String>,
+    avatar_url: Option<String>,
+    cover_image_url: Option<String>,
+    created_at: String,
+    account_enabled: bool,
+    profile_visibility: String,
+    message_privacy: String,
+    show_activity_status: bool,
+    keep_profile_visitors: bool,
+    notify_mentions: bool,
+    cover_position_x: i32,
+    cover_position_y: i32,
+    cover_zoom: i32,
+    is_admin: bool,
+    is_superadmin: bool,
+    post_count: i64,
+}
+
+struct AdminUserUpdate {
+    account_enabled: bool,
+}
+
+struct MediaSearchQuery {
+    q: String,
+    kind: Option<String>,
+}
+
+struct FollowedPerson {
+    username: String,
+    display_name: Option<String>,
+    avatar_url: Option<String>,
+    is_favorite: bool,
+}
+
+struct DirectMessage {
+    id: i64,
+    sender: String,
+    body: String,
+    image_url: Option<String>,
+    media_type: Option<String>,
+    created_at: String,
+    can_delete: bool,
+}
+
+struct PersonalChatRequest {
+    id: i64,
+    username: String,
+    status: String,
+    incoming: bool,
+    conversation_id: Option<i32>,
+    requested_at: String,
+}
+
+struct NewConversation {
+    usernames: Vec<String>,
+    title: Option<String>,
+}
+
+struct UserSearchQuery {
+    q: String,
+}
+
+struct UserSearchResult {
+    username: String,
+    display_name: Option<String>,
+    avatar_url: Option<String>,
+}
+
+struct NewConversationResponse {
+    id: i32,
+}
+
+struct UserInfo {
+    username: String,
+    is_admin: bool,
+    is_superadmin: bool,
+    cover_image_url: Option<String>,
+    cover_position_x: i32,
+    cover_position_y: i32,
+    cover_zoom: i32,
+}
+
+struct UserSettings {
+    profile_visibility: String,
+    message_privacy: String,
+    show_activity_status: bool,
+    keep_profile_visitors: bool,
+    notify_mentions: bool,
+    account_enabled: bool,
+}
+
+struct UserSettingsUpdate {
+    profile_visibility: String,
+    message_privacy: String,
+    show_activity_status: bool,
+    keep_profile_visitors: bool,
+    notify_mentions: bool,
+    account_enabled: bool,
+}
+
+struct BlockUserRequest {
+    username: String,
+}
+
+struct BlockedUser {
+    username: String,
+    avatar_url: Option<String>,
+}
+
+async fn list_conversations(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<ConversationSummary>>, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let conversations = sqlx::query_as::<_, ConversationSummary>(
+        r#"
+        SELECT c.id,
+               c.title,
+               c.is_group,
+               (c.created_by = $1) AS is_owner,
+               c.is_muted,
+               ARRAY(
+                   SELECT u.username
+                   FROM conversation_members cm
+                   JOIN users u ON u.id = cm.user_id
+                   WHERE cm.conversation_id = c.id
+                   ORDER BY u.username
+               ) AS members,
+               (SELECT CASE
+                           WHEN m.body <> '' THEN m.body
+                           ELSE 'Photo'
+                       END
+                FROM direct_messages m
+                WHERE m.conversation_id = c.id
+                ORDER BY m.id DESC
+                LIMIT 1) AS latest_message,
+               (SELECT to_char(m.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+                FROM direct_messages m
+                WHERE m.conversation_id = c.id
+                ORDER BY m.id DESC
+                LIMIT 1) AS latest_message_at,
+               (SELECT COUNT(*) FROM direct_messages m
+                WHERE m.conversation_id = c.id
+                  AND m.sender_id <> $1
+                  AND m.created_at > COALESCE(mine.last_read_at, mine.joined_at)) AS unread_count
+        FROM conversations c
+        JOIN conversation_members mine
+          ON mine.conversation_id = c.id AND mine.user_id = $1
+        ORDER BY COALESCE(
+            (SELECT m.created_at FROM direct_messages m
+             WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1),
+            c.created_at
+        ) DESC
+        LIMIT 100
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("conversation list failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(conversations))
+}
+
+async fn create_conversation(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Json(new_conversation): Json<NewConversation>,
+) -> Result<(StatusCode, Json<NewConversationResponse>), StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let mut usernames = Vec::new();
+    let mut seen = HashSet::new();
+    for username in new_conversation.usernames.iter().map(|name| name.trim()) {
+        if username.is_empty() || username.len() > 30 || !username.chars().all(username_character) {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+        if seen.insert(username.to_string()) {
+            usernames.push(username.to_string());
+        }
+    }
+    if usernames.is_empty() || usernames.len() > 9 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let title = new_conversation
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty());
+    if title.is_some_and(|title| title.chars().count() > 60) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let recipient_ids: Vec<(i32,)> =
+        sqlx::query_as("SELECT id FROM users WHERE username = ANY($1)")
+            .bind(&usernames)
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| {
+                eprintln!("conversation participant lookup failed: {e}");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+    if recipient_ids.len() != usernames.len() || recipient_ids.iter().any(|(id,)| *id == user_id) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let recipient_id_values: Vec<i32> = recipient_ids.iter().map(|(id,)| *id).collect();
+    let recipients_reject_message: bool = sqlx::query_scalar(
+        r#"
+        SELECT EXISTS (
+            SELECT 1 FROM users recipient
+            WHERE recipient.id = ANY($1)
+              AND (
+                  NOT recipient.account_enabled
+                  OR recipient.message_privacy = 'nobody'
+                  OR (
+                      recipient.message_privacy = 'following'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM follows f
+                          WHERE f.follower_id = recipient.id AND f.followee_id = $2
+                      )
+                  )
+                  OR EXISTS (
+                      SELECT 1 FROM user_blocks b
+                      WHERE (b.blocker_id = recipient.id AND b.blocked_id = $2)
+                         OR (b.blocker_id = $2 AND b.blocked_id = recipient.id)
+                  )
+              )
+        )
+        "#,
+    )
+    .bind(&recipient_id_values)
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("conversation privacy check failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    if recipients_reject_message {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    let is_group = recipient_ids.len() > 1;
+
+    let mut tx = pool.begin().await.map_err(|e| {
+        eprintln!("conversation transaction failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    if !is_group {
+        let existing: Option<(i32,)> = sqlx::query_as(
+            r#"
+            SELECT c.id
+            FROM conversations c
+            JOIN conversation_members mine
+              ON mine.conversation_id = c.id AND mine.user_id = $1
+            JOIN conversation_members other
+              ON other.conversation_id = c.id AND other.user_id = $2
+            WHERE NOT c.is_group
+              AND (SELECT COUNT(*) FROM conversation_members cm
+                   WHERE cm.conversation_id = c.id) = 2
+            LIMIT 1
+            "#,
+        )
+        .bind(user_id)
+        .bind(recipient_ids[0].0)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| {
+            eprintln!("direct conversation lookup failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+        if let Some((conversation_id,)) = existing {
+            tx.commit().await.map_err(|e| {
+                eprintln!("conversation lookup commit failed: {e}");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+            return Ok((
+                StatusCode::OK,
+                Json(NewConversationResponse {
+                    id: conversation_id,
+                }),
+            ));
+        }
+    }
+
+    let title = if is_group {
+        title.map(str::to_string).or_else(|| {
+            let mut members = usernames.clone();
+            members.sort();
+            Some(members.join(", "))
+        })
+    } else {
+        None
+    };
+    let (conversation_id,): (i32,) = sqlx::query_as(
+        "INSERT INTO conversations (title, is_group, created_by) VALUES ($1, $2, $3) RETURNING id",
+    )
+    .bind(title)
+    .bind(is_group)
+    .bind(user_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| {
+        eprintln!("conversation creation failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    sqlx::query("INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1, $2)")
+        .bind(conversation_id)
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            eprintln!("conversation owner insert failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    for (recipient_id,) in recipient_ids {
+        sqlx::query("INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1, $2)")
+            .bind(conversation_id)
+            .bind(recipient_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                eprintln!("conversation member insert failed: {e}");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+    }
+    tx.commit().await.map_err(|e| {
+        eprintln!("conversation creation commit failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok((
+        StatusCode::CREATED,
+        Json(NewConversationResponse {
+            id: conversation_id,
+        }),
+    ))
+}
+
+async fn search_users(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Query(query): Query<UserSearchQuery>,
+) -> Result<Json<Vec<UserSearchResult>>, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let search = query.q.trim();
+    if search.chars().count() < 2 || search.chars().count() > 50 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let users = sqlx::query_as::<_, UserSearchResult>(
+        "SELECT username, display_name, avatar_url FROM users
+         WHERE id <> $1
+           AND account_enabled
+           AND (
+               profile_visibility = 'public'
+               OR (
+                   profile_visibility = 'followers'
+                   AND EXISTS (
+                       SELECT 1 FROM follows f
+                       WHERE f.follower_id = $1 AND f.followee_id = users.id
+                   )
+               )
+           )
+           AND (LOWER(LEFT(username, char_length($2))) = LOWER($2)
+                OR STRPOS(LOWER(COALESCE(display_name, '')), LOWER($2)) > 0)
+           AND NOT EXISTS (
+               SELECT 1 FROM user_blocks b
+               WHERE (b.blocker_id = $1 AND b.blocked_id = users.id)
+                  OR (b.blocker_id = users.id AND b.blocked_id = $1)
+           )
+         ORDER BY CASE WHEN LOWER(LEFT(username, char_length($2))) = LOWER($2) THEN 0 ELSE 1 END, username
+         LIMIT 50",
+    )
+    .bind(user_id)
+    .bind(search)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("user search failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(users))
+}
+
+async fn list_messages(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(conversation_id): Path<i32>,
+) -> Result<Json<Vec<DirectMessage>>, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let is_member: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM conversation_members WHERE conversation_id = $1 AND user_id = $2)",
+    )
+    .bind(conversation_id)
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("conversation access check failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    if !is_member {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    sqlx::query("UPDATE conversation_members SET last_read_at = now() WHERE conversation_id = $1 AND user_id = $2")
+        .bind(conversation_id)
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| {
+            eprintln!("conversation read receipt update failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    let messages = sqlx::query_as::<_, DirectMessage>(
+        r#"
+        SELECT m.id,
+               u.username AS "sender",
+               m.body,
+               CASE WHEN m.image_path LIKE 'https://%.giphy.com/%' OR m.image_path LIKE 'https://%.wikimedia.org/%'
+                    THEN m.image_path
+                    WHEN m.image_path IS NOT NULL
+                    THEN '/api/messages/' || m.id || '/image'
+               END AS image_url,
+               CASE WHEN RIGHT(m.image_path, 4) = '.mp4' OR RIGHT(m.image_path, 5) = '.webm'
+                    THEN 'video' ELSE 'image' END AS media_type,
+               to_char(m.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
+               (m.sender_id = $2 OR (c.is_group AND c.created_by = $2)) AS can_delete
+        FROM direct_messages m
+        JOIN users u ON u.id = m.sender_id
+        JOIN conversations c ON c.id = m.conversation_id
+        WHERE m.conversation_id = $1
+        ORDER BY m.id DESC
+        LIMIT 100
+        "#,
+    )
+    .bind(conversation_id)
+    .bind(user_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("conversation messages query failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(messages.into_iter().rev().collect()))
+}
+
+async fn list_friends(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<FollowedPerson>>, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let people = sqlx::query_as::<_, FollowedPerson>(
+        r#"SELECT u.username, u.display_name, u.avatar_url,
+                  EXISTS (SELECT 1 FROM user_favorites f
+                          WHERE f.user_id = $1 AND f.favorite_user_id = u.id) AS is_favorite
+           FROM follows follow
+           JOIN users u ON u.id = follow.followee_id
+           WHERE follow.follower_id = $1 AND u.account_enabled
+           ORDER BY u.username"#,
+    )
+    .bind(user_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("friends list failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(people))
+}
+

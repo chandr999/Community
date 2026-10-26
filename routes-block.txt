@@ -1,0 +1,155 @@
+﻿    }
+
+    let app = Router::new()
+        .route("/api/feed", get(feed))
+        .route("/api/signup", post(signup))
+        .route("/api/login", post(login))
+        .route("/api/me", get(me))
+        .route("/api/status", get(app_status))
+        .route("/api/admin/overview", get(admin_overview))
+        .route("/api/admin/users/{id}", put(admin_update_user).delete(admin_delete_user))
+        .route("/api/admin/users/{id}/role", put(admin_update_role))
+        .route("/api/admin/conversations/{id}", delete(admin_delete_conversation))
+        .route("/api/admin/conversations/{id}/moderation", put(admin_update_conversation))
+        .route("/api/chat-media/search", get(search_chat_media))
+        .route("/api/locations/search", get(search_locations))
+        .route("/api/admin/config", put(admin_update_config))
+        .route(
+            "/api/me/settings",
+            get(get_user_settings).put(update_user_settings),
+        )
+        .route(
+            "/api/me/blocked-users",
+            get(list_blocked_users).post(block_user),
+        )
+        .route("/api/me/blocked-users/{username}", delete(unblock_user))
+        .route("/api/me/activity", get(my_activity))
+        .route("/api/me/dashboard", get(settings_dashboard))
+        .route("/api/checkins", get(list_checkins).post(create_checkin))
+        .route("/api/news", get(get_news))
+        .route("/api/checkins/{id}", delete(delete_checkin))
+        .route("/api/feedback", axum::routing::post(submit_feedback))
+        .route("/api/stories", get(story_tray).post(create_story))
+        .route("/api/stories/{id}", delete(delete_story))
+        .route("/api/stories/{id}/view", axum::routing::post(view_story))
+        .route("/api/users/{username}/stories", get(user_stories))
+        .route("/api/posts/{id}", delete(delete_post))
+        .route("/api/posts/{id}/comments/{comment_id}", delete(delete_comment))
+        .route("/api/locations/live", get(list_live_locations))
+        .route(
+            "/api/me/location",
+            post(update_live_location).delete(remove_live_location),
+        )
+        .route("/api/me/location/stop", post(stop_live_location_beacon))
+        .route("/api/me/presence", post(record_presence))
+        .route(
+            "/api/me/personal-chat-requests",
+            get(list_personal_chat_requests),
+        )
+        .route(
+            "/api/personal-chat-requests/{id}/accept",
+            post(accept_personal_chat_request),
+        )
+        .route(
+            "/api/personal-chat-requests/{id}/reject",
+            post(reject_personal_chat_request),
+        )
+        .route("/api/users/active", get(active_users))
+        .route(
+            "/api/conversations",
+            get(list_conversations).post(create_conversation),
+        )
+        .route(
+            "/api/conversations/{id}/messages",
+            get(list_messages)
+                .post(send_message)
+                .delete(delete_group_messages)
+                .layer(DefaultBodyLimit::max(51 * 1024 * 1024)),
+        )
+        .route("/api/conversations/{id}/messages/{message_id}", delete(delete_message))
+        .route("/api/conversations/{id}/members", get(list_group_members))
+        .route("/api/conversations/{id}/members/{member_id}", delete(remove_group_member))
+        .route("/api/conversations/{id}/group", delete(delete_group))
+        .route("/api/conversations/{id}", put(update_group).delete(delete_conversation))
+        .route("/api/conversations/{id}/report", post(report_conversation))
+        .route("/api/users/search", get(search_users))
+        .route("/api/messages/{id}/image", get(read_message_image))
+        .route("/api/logout", post(logout))
+        .route("/api/me/profile", put(update_profile))
+        .route(
+            "/api/me/avatar",
+            post(upload_avatar)
+                .delete(remove_avatar)
+                .layer(DefaultBodyLimit::max(5 * 1024 * 1024)),
+        )
+        .route(
+            "/api/me/cover",
+            post(upload_home_cover)
+                .delete(remove_home_cover)
+                .put(update_home_cover_position)
+                .layer(DefaultBodyLimit::max(5 * 1024 * 1024)),
+        )
+        .route(
+            "/api/posts",
+            post(create_post).layer(DefaultBodyLimit::max(52 * 1024 * 1024)),
+        )
+        .route("/api/posts/{id}/like", post(like_post).delete(unlike_post))
+        .route(
+            "/api/posts/{id}/dislike",
+            post(dislike_post).delete(undislike_post),
+        )
+        .route("/api/posts/{id}/hate", post(hate_post).delete(unhate_post))
+        .route(
+            "/api/posts/{id}/reshare",
+            post(reshare_post).delete(undo_reshare),
+        )
+        .route("/api/posts/{id}/report", post(report_post))
+        .route(
+            "/api/posts/{id}/comments",
+            get(list_comments).post(add_comment),
+        )
+        .route("/api/users/{username}", get(profile))
+        .route(
+            "/api/users/{username}/connections",
+            get(profile_connections),
+        )
+        .route("/api/users/{username}/admirers", get(profile_admirers))
+        .route(
+            "/api/users/{username}/admire",
+            post(admire_user).delete(unadmire_user),
+        )
+        .route(
+            "/api/users/{username}/personal-chat-requests",
+            post(create_personal_chat_request),
+        )
+        .route(
+            "/api/users/{username}/follow",
+            post(follow_user).delete(unfollow_user),
+        )
+        .route(
+            "/api/users/{username}/favorite",
+            post(favorite_user).delete(unfavorite_user),
+        )
+        .route("/api/me/friends", get(list_friends))
+        .route("/api/communities", get(list_communities).post(create_community))
+        .route("/api/communities/{id}", put(update_community).delete(delete_community))
+        .route(
+            "/api/communities/{id}/image",
+            post(upload_community_image).layer(DefaultBodyLimit::max(5 * 1024 * 1024 + 64 * 1024)),
+        )
+        .route("/api/communities/{id}/join", post(join_community).delete(leave_community))
+        .route("/api/communities/{id}/active", get(list_active_community_members))
+        .route("/api/communities/{id}/posts/{post_id}/report", post(report_community_post))
+        .route("/api/communities/{id}/claim", post(claim_community))
+        .route("/api/communities/{id}/members", get(list_community_members).post(add_community_member))
+        .route("/api/communities/{id}/members/{member_id}", delete(remove_community_member))
+        .route("/api/communities/{id}/members/{member_id}/status", put(set_community_member_status))
+        .route("/api/communities/{id}/members/{member_id}/admin", put(set_community_member_admin))
+        .route("/api/communities/{id}/posts", get(list_community_posts).post(create_community_post))
+        .route("/api/communities/{id}/posts/{post_id}", delete(delete_community_post).put(edit_community_post))
+        .route("/api/communities/{id}/posts/{post_id}/comments", get(list_community_comments).post(create_community_comment))
+        .route("/api/communities/{id}/posts/{post_id}/comments/{comment_id}", delete(delete_community_comment))
+        .route_layer(middleware::from_fn_with_state(
+            pool.clone(),
+            app_enabled_guard,
+        ))

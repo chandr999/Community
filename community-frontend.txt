@@ -1,0 +1,340 @@
+﻿    function communitySideItem(group, activeId, openCommunity) {
+      const button = el('button', undefined, 'community-side-item' + (Number(activeId) === group.id ? ' active' : ''));
+      button.type = 'button';
+      const mark = group.image_url ? el('img') : el('span', group.name.slice(0, 1).toUpperCase(), 'community-side-mark');
+      if (group.image_url) { mark.src = group.image_url; mark.alt = ''; }
+      const copy = el('span', undefined, 'community-side-copy');
+      copy.append(el('strong', group.name), el('span', group.is_disabled ? 'Access paused' : `${group.member_count} members`));
+      button.append(mark, copy);
+      button.disabled = group.is_disabled;
+      button.onclick = () => openCommunity(group);
+      return button;
+    }
+
+    function communityWorkspace(view, communities, activeId) {
+      const workspace = el('div', undefined, 'community-workspace');
+      const sidebar = el('aside', undefined, 'community-sidebar');
+      const sidebarHead = el('div', undefined, 'community-sidebar-head');
+      sidebarHead.append(el('h2', 'Your spaces'));
+      const create = el('button', '+ Create'); create.type = 'button';
+      sidebarHead.append(create); sidebar.append(sidebarHead);
+      const createForm = el('form', undefined, 'community-form'); createForm.hidden = true;
+      const name = el('input'); name.placeholder = 'Community name'; name.maxLength = 50; name.required = true;
+      const description = el('textarea'); description.placeholder = 'What brings this community together?'; description.maxLength = 500;
+      const image = el('input'); image.type = 'file'; image.accept = 'image/jpeg,image/png,image/webp,image/gif';
+      const imageLabel = el('label', 'Community image Â· optional', 'community-create-image'); imageLabel.append(image);
+      const createStatus = el('p', '', 'community-note'); const submit = el('button', 'Create community'); submit.type = 'submit';
+      createForm.append(name, description, imageLabel, submit, createStatus);
+      create.onclick = () => { createForm.hidden = !createForm.hidden; };
+      createForm.onsubmit = async event => {
+        event.preventDefault(); submit.disabled = true; createStatus.textContent = 'Creatingâ€¦';
+        try {
+          const response = await post('/api/communities', { name: name.value, description: description.value });
+          if (!response.ok) { createStatus.textContent = response.status === 409 ? 'That name is already in use.' : 'Could not create the community.'; return; }
+          const created = await response.json();
+          if (image.files && image.files[0]) {
+            const form = new FormData(); form.append('image', image.files[0]);
+            const uploaded = await fetch(`/api/communities/${created.id}/image`, { method: 'POST', body: form });
+            if (!uploaded.ok) alert(uploaded.status === 413 ? 'Community created, but its image exceeds 5 MB.' : 'Community created, but its image could not be uploaded. You can add it from the community header.');
+          }
+          location.hash = '#/community/' + created.id;
+        } catch (error) { createStatus.textContent = 'Could not create the community. Check your connection and try again.'; }
+        finally { submit.disabled = false; }
+      };
+      sidebar.append(createForm);
+      const joined = communities.filter(group => group.is_member || group.is_disabled);
+      const mine = el('section', undefined, 'community-sidebar-section');
+      mine.append(el('h3', 'Joined'));
+      const joinedList = el('div', undefined, 'community-side-list');
+      if (!joined.length) joinedList.append(el('p', 'Your joined communities will appear here.', 'community-note'));
+      joined.forEach(group => joinedList.append(communitySideItem(group, activeId, item => { if (!item.is_disabled) location.hash = '#/community/' + item.id; })));
+      mine.append(joinedList); sidebar.append(mine);
+      const discover = el('section', undefined, 'community-sidebar-section'); discover.append(el('h3', 'Discover'));
+      const discoverList = el('div', undefined, 'community-side-list');
+      const available = communities.filter(group => !group.is_member && !group.is_disabled);
+      if (!available.length) discoverList.append(el('p', 'You are up to date.', 'community-note'));
+      available.forEach(group => discoverList.append(communitySideItem(group, activeId, async item => {
+        const response = await post(`/api/communities/${item.id}/join`);
+        if (response.ok) location.hash = '#/community/' + item.id;
+        else alert(response.status === 403 ? 'Your access to this community is paused. Contact its owner.' : 'Could not join this community.');
+      })));
+      discover.append(discoverList); sidebar.append(discover);
+      const main = el('main', undefined, 'community-main');
+      workspace.append(sidebar, main); view.append(workspace);
+      return main;
+    }
+
+    async function showCommunities() {
+      stopInboxPolling(); hideSocialViews();
+      const view = document.getElementById('communityView'); view.hidden = false; view.replaceChildren();
+      if (!loggedIn) { view.append(el('p', 'Log in to join or create a community.', 'empty')); return; }
+      const response = await fetch('/api/communities');
+      if (!response.ok) { view.append(el('p', 'Communities could not be loaded.', 'empty')); return; }
+      const communities = await response.json();
+      const main = communityWorkspace(view, communities, null);
+      const empty = el('section', undefined, 'community-main-empty');
+      empty.append(el('h1', 'Find your people'), el('p', 'Choose a community on the left to read discussions, share ideas, and meet members.'));
+      main.append(empty);
+    }
+
+    async function showCommunityDetail(id) {
+      stopInboxPolling(); hideSocialViews();
+      const view = document.getElementById('communityView'); view.hidden = false; view.replaceChildren();
+      if (!loggedIn) { view.append(el('p', 'Log in to view communities.', 'empty')); return; }
+      const listRes = await fetch('/api/communities');
+      if (!listRes.ok) { view.append(el('p', 'Community could not be loaded.', 'empty')); return; }
+      const communities = await listRes.json();
+      const group = communities.find(item => item.id === id);
+      const main = communityWorkspace(view, communities, id);
+      if (!group) { main.append(el('p', 'Community not found.', 'empty')); return; }
+      const banner = el('section', undefined, 'community-banner');
+      if (group.image_url) { const cover = el('img'); cover.className = 'community-banner-image'; cover.src = group.image_url; cover.alt = ''; banner.append(cover); }
+      const bannerContent = el('div', undefined, 'community-banner-content');
+      const copy = el('div', undefined, 'community-banner-copy');
+      copy.append(el('h1', group.name), el('p', group.description || 'A place to connect, share what you know, and build community together.'), el('div', `${group.member_count} members${group.owner ? ' Â· owned by @' + group.owner : ' Â· owner not assigned'}${group.is_owner ? ' Â· you are the owner' : group.is_admin ? ' Â· community admin' : ''}`, 'community-banner-meta'));
+      const actions = el('div', undefined, 'community-banner-actions');
+      if (group.is_disabled) {
+        actions.append(el('span', 'Your access is paused by the community owner.'));
+      } else if (!group.is_member) {
+        const join = el('button', 'Join community', 'community-join-button'); join.onclick = async () => { const result = await post(`/api/communities/${id}/join`); if (result.ok) showCommunityDetail(id); else alert(result.status === 403 ? 'Your access to this community is paused. Contact its owner.' : 'Could not join this community.'); };
+        actions.append(join);
+      } else if (group.is_member && !group.owner) {
+        const claim = el('button', 'Become owner'); claim.onclick = async () => { if (!window.confirm('Become the owner of this community? You will control its settings and moderation.')) return; const result = await post(`/api/communities/${id}/claim`); if (result.ok) showCommunityDetail(id); else alert(result.status === 409 ? 'Someone else has already claimed ownership.' : 'Could not claim this community.'); };
+        actions.append(claim);
+      } else if (group.is_owner || group.is_admin) {
+        const edit = el('button', 'Edit details'); edit.onclick = async () => { const name = prompt('Community name', group.name); if (!name) return; const description = prompt('Description', group.description) ?? group.description; const result = await fetch(`/api/communities/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, description }) }); if (result.ok) showCommunityDetail(id); else alert('Could not update the community.'); };
+        const imageInput = el('input'); imageInput.type = 'file'; imageInput.accept = 'image/jpeg,image/png,image/webp,image/gif'; imageInput.hidden = true;
+        const imageButton = el('button', group.image_url ? 'Change image' : 'Add image'); imageButton.onclick = () => imageInput.click();
+        imageInput.onchange = async () => { if (!imageInput.files || !imageInput.files[0]) return; if (imageInput.files[0].size > 5 * 1024 * 1024) { alert('Choose an image under 5 MB.'); imageInput.value = ''; return; } const form = new FormData(); form.append('image', imageInput.files[0]); const result = await fetch(`/api/communities/${id}/image`, { method: 'POST', body: form }); if (result.ok) showCommunityDetail(id); else alert(result.status === 415 ? 'Choose a JPEG, PNG, WebP, or GIF image.' : 'Could not upload the community image.'); };
+        const memberAction = el('button', 'Manage members'); memberAction.onclick = async () => showCommunityTab('Members');
+        if (group.is_owner) { const remove = el('button', 'Delete community'); remove.onclick = async () => { if (!window.confirm('Delete this community and its discussions?')) return; const result = await fetch(`/api/communities/${id}`, { method: 'DELETE' }); if (result.ok) location.hash = '#/community'; else alert('Could not delete this community.'); }; actions.append(edit, imageButton, imageInput, remove); }
+        actions.append(memberAction);
+      } else if (group.is_member) {
+        const leave = el('button', 'Leave community'); leave.onclick = async () => { const result = await fetch(`/api/communities/${id}/join`, { method: 'DELETE' }); if (result.ok) location.hash = '#/community'; else alert('Could not leave this community.'); };
+        actions.append(leave);
+      }
+      bannerContent.append(copy, actions); banner.append(bannerContent); main.append(banner);
+      if (!group.is_member) {
+        main.append(el('section', 'Join this community to read discussions, reply, and share your ideas.', 'community-about-card'));
+        return;
+      }
+      const tabBar = el('nav', undefined, 'community-tabs');
+      const panel = el('section', undefined, 'community-tab-panel');
+      const tabs = ['Discussion', 'About', 'Members'];
+      function activateTab(name) {
+        tabBar.querySelectorAll('.community-tab').forEach(button => { const active = button.textContent === name; button.classList.toggle('active', active); button.setAttribute('aria-current', active ? 'page' : 'false'); });
+        panel.replaceChildren();
+        if (name === 'About') {
+          const about = el('article', undefined, 'community-about-card'); about.append(el('h2', 'About this community'), el('p', group.description || 'A place to connect, share what you know, and build community together.'), el('p', `${group.owner ? `Owned by @${group.owner}` : 'No owner yet'} Â· ${group.member_count} members`, 'community-meta')); panel.append(about); return;
+        }
+        if (name === 'Members') { loadCommunityMembers(id, group, panel); return; }
+        loadCommunityDiscussion(id, group, panel);
+      }
+      tabs.forEach(name => { const button = el('button', name, 'community-tab'); button.type = 'button'; button.onclick = () => activateTab(name); tabBar.append(button); });
+      main.append(tabBar, panel);
+      activateTab('Discussion');
+    }
+
+    async function loadCommunityMembers(id, group, panel) {
+      panel.replaceChildren(el('p', 'Loading membersâ€¦', 'community-note'));
+      const response = await fetch(`/api/communities/${id}/members`);
+      if (!response.ok) {
+        const message = response.status === 403
+          ? 'Join this community to view its members.'
+          : response.status === 404
+            ? 'This community could not be found.'
+            : 'The member list is temporarily unavailable. Please try again.';
+        panel.replaceChildren(el('p', message, 'empty'));
+        return;
+      }
+      const members = await response.json();
+      const section = el('section', undefined, 'community-member-list'); section.append(el('h2', `Members Â· ${members.length}`));
+      if (group.is_owner || group.is_admin) {
+        const addForm = el('form', undefined, 'community-toolbar'); const username = el('input'); username.placeholder = 'Username to add'; username.maxLength = 30; username.required = true;
+        const add = el('button', 'Add member'); add.type = 'submit'; const status = el('span', '', 'community-note'); addForm.append(username, add, status);
+        addForm.onsubmit = async event => { event.preventDefault(); add.disabled = true; const result = await post(`/api/communities/${id}/members`, { username: username.value.trim() }); if (result.ok) loadCommunityMembers(id, group, panel); else status.textContent = result.status === 404 ? 'No enabled account has that username.' : 'Could not add that member.'; add.disabled = false; };
+        section.append(addForm);
+      }
+      members.forEach(member => {
+        const row = el('div', undefined, 'community-member-row'); row.append(avatarEl(null), profileLink(member.username, '@' + member.username + (member.is_owner ? ' Â· owner' : member.is_admin ? ' Â· admin' : '')));
+        if (group.is_owner && !member.is_owner) {
+          const adminButton = el('button', member.is_admin ? 'Remove admin' : 'Make admin'); adminButton.type = 'button';
+          adminButton.onclick = async () => { const result = await fetch(`/api/communities/${id}/members/${member.id}/admin`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_admin: !member.is_admin }) }); if (result.ok) loadCommunityMembers(id, group, panel); else alert('Could not update the community admin role.'); };
+          row.append(adminButton);
+        }
+        if ((group.is_owner || group.is_admin) && !member.is_owner && !member.is_admin) {
+          const statusButton = el('button', member.enabled ? 'Pause access' : 'Enable access'); statusButton.type = 'button';
+          statusButton.onclick = async () => { const result = await fetch(`/api/communities/${id}/members/${member.id}/status`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !member.enabled }) }); if (result.ok) loadCommunityMembers(id, group, panel); else alert('Could not update member access.'); };
+          const remove = el('button', 'Remove'); remove.type = 'button'; remove.onclick = async () => { if (!window.confirm(`Remove @${member.username} from this community?`)) return; const result = await fetch(`/api/communities/${id}/members/${member.id}`, { method: 'DELETE' }); if (result.ok) loadCommunityMembers(id, group, panel); else alert('Could not remove that member.'); };
+          row.append(statusButton, remove);
+        } else if (!member.enabled) row.append(el('span', 'Access paused', 'community-meta'));
+        section.append(row);
+      });
+      panel.replaceChildren(section);
+    }
+
+    async function loadCommunityDiscussion(id, group, panel) {
+      panel.replaceChildren();
+      const composer = el('section', undefined, 'community-composer'); composer.append(el('h2', 'Start a discussion'));
+      const form = el('form', undefined, 'community-discussion-form');
+      const title = el('input'); title.placeholder = 'Give your topic a clear title'; title.maxLength = 120; title.required = true;
+      const body = el('textarea'); body.placeholder = 'Ask a question, share advice, or start a conversationâ€¦'; body.maxLength = 5000; body.required = true;
+      const submit = el('button', 'Share with community'); submit.type = 'submit'; const status = el('p', '', 'community-note'); form.append(title, body, submit, status); composer.append(form); panel.append(composer);
+      form.onsubmit = async event => { event.preventDefault(); submit.disabled = true; const result = await post(`/api/communities/${id}/posts`, { title: title.value, body: body.value }); if (result.ok) loadCommunityDiscussion(id, group, panel); else status.textContent = 'Could not post. Check your title and message.'; submit.disabled = false; };
+      const response = await fetch(`/api/communities/${id}/posts`);
+      if (!response.ok) { panel.append(el('p', 'Discussions could not be loaded.', 'empty')); return; }
+      const posts = await response.json(); const postsBox = el('section', undefined, 'community-posts');
+      if (!posts.length) postsBox.append(el('p', 'No discussions yet. Be the first to start a conversation.', 'empty'));
+      posts.forEach(topic => {
+        const card = el('article', undefined, 'community-post');
+        const postHead = el('header', undefined, 'community-post-head');
+        const author = el('div', undefined, 'community-post-author'); author.append(profileLink(topic.username, '@' + topic.username), el('span', new Date(topic.created_at).toLocaleString(), 'community-meta'));
+        postHead.append(avatarEl(topic.avatar_url), author); card.append(postHead);
+        const content = el('div', undefined, 'community-post-content'); content.append(el('h3', topic.title), el('p', topic.body)); card.append(content);
+        const actions = el('div', undefined, 'community-post-actions');
+        const repliesButton = el('button', `${topic.comment_count} replies`); repliesButton.type = 'button';
+        const replies = el('div', undefined, 'community-comments'); replies.hidden = true;
+        repliesButton.onclick = async () => { replies.hidden = !replies.hidden; if (!replies.hidden && !replies.dataset.loaded) { const result = await fetch(`/api/communities/${id}/posts/${topic.id}/comments`); if (result.ok) { const rows = await result.json(); rows.forEach(comment => { const row = el('div', undefined, 'community-comment'); row.append(el('span', '@' + comment.username + ': ' + comment.body)); if (comment.can_delete) { const del = el('button', 'Delete reply'); del.type = 'button'; del.onclick = async () => { if (!window.confirm('Delete this reply?')) return; const response = await fetch(`/api/communities/${id}/posts/${topic.id}/comments/${comment.id}`, { method: 'DELETE' }); if (response.ok) loadCommunityDiscussion(id, group, panel); }; row.append(del); } replies.append(row); }); replies.dataset.loaded = '1'; } } };
+        actions.append(repliesButton);
+        if (topic.can_delete) { const del = el('button', 'Delete discussion'); del.type = 'button'; del.onclick = async () => { if (!window.confirm('Delete this discussion and its replies?')) return; const result = await fetch(`/api/communities/${id}/posts/${topic.id}`, { method: 'DELETE' }); if (result.ok) loadCommunityDiscussion(id, group, panel); }; actions.append(del); }
+        card.append(actions, replies);
+        const replyForm = el('form', undefined, 'community-toolbar'); const input = el('input'); input.placeholder = 'Write a reply'; input.maxLength = 2000; input.required = true; const send = el('button', 'Reply'); send.type = 'submit'; replyForm.append(input, send);
+        replyForm.onsubmit = async event => { event.preventDefault(); send.disabled = true; const result = await post(`/api/communities/${id}/posts/${topic.id}/comments`, { body: input.value }); if (result.ok) loadCommunityDiscussion(id, group, panel); else { alert('Could not add your reply.'); send.disabled = false; } };
+        card.append(replyForm); postsBox.append(card);
+      });
+      panel.append(postsBox);
+    }
+
+    function showHome() {
+      stopInboxPolling();
+      document.getElementById('homeView').hidden = false;
+      document.getElementById('profileView').hidden = true;
+      document.getElementById('inboxView').hidden = true;
+      document.getElementById('userSearchView').hidden = true;
+      document.getElementById('settingsView').hidden = true;
+      document.getElementById('signupView').hidden = true;
+      renderTabs();
+      loadFeed();
+      loadActivity();
+    }
+
+    function showSignup() {
+      stopInboxPolling();
+      ['homeView', 'profileView', 'inboxView', 'userSearchView', 'settingsView'].forEach(id => {
+        document.getElementById(id).hidden = true;
+      });
+      const view = document.getElementById('signupView');
+      view.hidden = false;
+      view.replaceChildren();
+      const back = el('a', 'â† Back to Community', 'signup-back');
+      back.href = '#/';
+      const card = el('section', undefined, 'signup-card');
+      card.append(
+        el('h1', 'Create your account'),
+        el('p', 'Join Community and start connecting with your community.'),
+      );
+      const form = el('form', undefined, 'signup-form');
+      const addField = (labelText, name, type, options = {}) => {
+        const label = el('label', labelText, 'signup-field' + (options.full ? ' full' : ''));
+        const input = type === 'textarea' ? el('textarea') : el('input');
+        input.name = name;
+        if (type !== 'textarea') input.type = type;
+        if (options.required) input.required = true;
+        if (options.minLength) input.minLength = options.minLength;
+        if (options.maxLength) input.maxLength = options.maxLength;
+        if (options.min !== undefined) input.min = options.min;
+        if (options.max !== undefined) input.max = options.max;
+        if (options.autocomplete) input.autocomplete = options.autocomplete;
+        if (options.placeholder) input.placeholder = options.placeholder;
+        label.append(input);
+        form.append(label);
+      };
+      addField('First name', 'first_name', 'text', { required: true, maxLength: 50, autocomplete: 'given-name' });
+      addField('Last name', 'last_name', 'text', { required: true, maxLength: 50, autocomplete: 'family-name' });
+      addField('Email address', 'email', 'email', { required: true, maxLength: 254, autocomplete: 'email' });
+      addField('Username', 'username', 'text', { required: true, minLength: 3, maxLength: 30, autocomplete: 'username' });
+      addField('Age', 'age', 'number', { required: true, min: 13, max: 120, autocomplete: 'off' });
+      addField('Phone number (optional)', 'phone_number', 'tel', { maxLength: 30, autocomplete: 'tel' });
+      addField('Bio (optional)', 'bio', 'textarea', { maxLength: 300, full: true });
+      addField('Password (8 characters minimum)', 'password', 'password', { required: true, minLength: 8, maxLength: 128, autocomplete: 'new-password', full: true });
+      const submit = el('button', 'Create account', 'signup-submit');
+      submit.type = 'submit';
+      const message = el('p', undefined, 'signup-message');
+      message.setAttribute('role', 'status');
+      form.append(submit, message);
+      form.onsubmit = async event => {
+        event.preventDefault();
+        submit.disabled = true;
+        message.textContent = '';
+        const values = Object.fromEntries(new FormData(form).entries());
+        values.age = Number(values.age);
+        try {
+          const response = await post('/api/signup', values);
+          if (response.status === 409) {
+            message.textContent = 'That username or email is already registered.';
+          } else if (response.status === 403) {
+            message.textContent = 'New account signups are currently closed by an administrator.';
+          } else if (response.status === 400) {
+            message.textContent = 'Check your email, name, username, age, phone number, bio and password.';
+          } else if (!response.ok) {
+            message.textContent = 'Could not create your account. Please try again.';
+          } else {
+            location.hash = '#/';
+            await renderAuth();
+          }
+        } catch (error) {
+          console.error('Could not create account:', error);
+          message.textContent = 'Could not create your account. Check your connection and try again.';
+        } finally {
+          submit.disabled = false;
+        }
+      };
+      card.append(form);
+      view.append(back, card);
+    }
+
+    function renderProfileDashboard(username) {
+      const dashboardCard = el('section', undefined, 'settings-card dashboard-card');
+      dashboardCard.id = 'profileDashboard';
+      dashboardCard.append(
+        el('h2', 'Your dashboard'),
+        el('p', 'A quick look at your profile activity and connections. New followers are counted over the last 30 days.'),
+      );
+      const status = el('p', 'Loading your dashboard...', 'settings-status');
+      status.setAttribute('role', 'status');
+      dashboardCard.append(status);
+
+      (async () => {
+        try {
+          const response = await fetch('/api/me/dashboard');
+          if (!response.ok) throw new Error('Dashboard request failed: ' + response.status);
+          const dashboard = await response.json();
+          const stats = dashboard.stats;
+          const profilePath = '#/u/' + encodeURIComponent(username);
+          const metrics = el('div', undefined, 'dashboard-metrics');
+          [
+            ['profile_visits_count', 'Profile visits', profilePath + '#dashboard-visitors'],
+            ['follower_count', 'Followers', profilePath + '#dashboard-followers'],
+            ['new_followers_count', 'New followers Â· 30 days', profilePath + '#dashboard-new-followers'],
+            ['following_count', 'Following', profilePath + '#dashboard-following'],
+            ['posts_shared_count', 'Posts published', profilePath + '#dashboard-posts'],
+            ['posts_reshared_by_others_count', 'Your posts reshared by others', profilePath + '#dashboard-posts'],
+            ['pending_personal_requests_count', 'Pending personal requests', '#/inbox'],
+            ['admirers_count', 'Admirers', profilePath + '#dashboard-admirers'],
+            ['blocked_profiles_count', 'Blocked profiles', profilePath + '#dashboard-blocked-profiles'],
+          ].forEach(([key, label, destination]) => {
+            const metric = el('a', undefined, 'dashboard-metric');
+            metric.href = destination;
+            metric.append(
+              el('strong', String(stats[key])),
+              el('span', label),
+              el('span', 'View details â†’', 'dashboard-metric-action'),
+            );
+            metrics.append(metric);
+          });
+          const lists = el('div', undefined, 'dashboard-lists');
+          const addDashboardList = (title, people, emptyText, timestampKey, sectionId) => {
+            const section = el('section', undefined, 'dashboard-list');
+            section.id = sectionId;
+            section.append(el('h3', title));
+            const list = el('div', undefined, 'activity-list');

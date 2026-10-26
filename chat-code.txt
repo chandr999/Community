@@ -1,0 +1,800 @@
+﻿        setHomeCover(
+          me.cover_image_url,
+          me.cover_position_x,
+          me.cover_position_y,
+          me.cover_zoom,
+        );
+        const inbox = el('a', 'Chats', 'inbox-link');
+        inbox.href = '#/inbox';
+        const friends = el('a', 'Friends', 'inbox-link');
+        friends.href = '#/friends';
+        const communities = el('a', 'Community', 'inbox-link');
+        communities.href = '#/community';
+        const settings = el('a', 'Settings', 'inbox-link');
+        settings.href = '#/settings';
+        if (me.is_admin && (appEnabled || me.is_superadmin)) {
+          const admin = el('a', 'Admin hub', 'inbox-link admin-link');
+          admin.href = '#/admin';
+          box.append(admin);
+        }
+        const out = el('button', 'Log out');
+        out.onclick = async () => {
+          await stopLiveLocationSharing(true);
+          await post('/api/logout');
+          renderAuth();
+        };
+        const mine = userLink('@' + me.username);
+        mine.href = '#/u/' + encodeURIComponent(me.username);
+        box.append(inbox, friends, communities, settings, mine, out);
+      } else {
+        currentUsername = '';
+        currentIsAdmin = false;
+        currentIsSuperadmin = false;
+        setHomeCover(null);
+        const u = el('input'); u.placeholder = 'username';
+        const p = el('input'); p.placeholder = 'password'; p.type = 'password';
+        const msg = el('span'); msg.id = 'msg';
+        const login = el('button', 'Log in');
+        const signup = el('a', 'Sign up', 'signup-link');
+        signup.href = '#/signup';
+
+        async function submit(path) {
+          const r = await post(path, { username: u.value, password: p.value });
+          if (r.ok) return renderAuth();
+          if (r.status === 401) msg.textContent = 'Wrong username or password';
+          else if (r.status === 400) msg.textContent = 'Enter a valid username and password';
+          else msg.textContent = 'Something went wrong';
+        }
+        login.onclick = () => submit('/api/login');
+        box.append(u, p, login, signup, msg);
+      }
+      if (!appEnabled && !currentIsSuperadmin) {
+        ['homeView', 'profileView', 'inboxView', 'friendsView', 'communityView', 'userSearchView', 'settingsView', 'signupView', 'adminView']
+          .forEach(id => { document.getElementById(id).hidden = true; });
+        document.getElementById('appPausedView').hidden = false;
+        return;
+      }
+      document.getElementById('appPausedView').hidden = true;
+      const mapForm = document.getElementById('checkinForm'); if (mapForm) { mapForm.hidden = !loggedIn || !selectedMapPoint;
+      document.getElementById('checkinLoginHint').hidden = loggedIn;
+      document.getElementById('shareLocationButton').hidden = !loggedIn; }
+      startPresenceTracking();
+      route(); // re-draw the current page so it matches who is logged in
+    }
+
+    function stopInboxPolling() {
+      if (inboxPoll !== null) {
+        clearInterval(inboxPoll);
+        inboxPoll = null;
+      }
+    }
+
+    async function showInbox() {
+      document.getElementById('homeView').hidden = true;
+      document.getElementById('profileView').hidden = true;
+      document.getElementById('settingsView').hidden = true;
+      document.getElementById('userSearchView').hidden = true;
+      document.getElementById('signupView').hidden = true;
+      const view = document.getElementById('inboxView');
+      view.hidden = false;
+      view.textContent = '';
+      stopInboxPolling();
+
+      view.append(el('h1', 'Chats', 'inbox-title'));
+      if (!loggedIn) {
+        view.append(el('p', 'Log in to start a private conversation.', 'empty'));
+        return;
+      }
+
+      const requestsPanel = el('section', undefined, 'chat-requests-panel');
+      const requestsList = el('div', undefined, 'connections-list');
+      requestsPanel.append(el('h2', 'Personal chat requests'), requestsList);
+      view.append(requestsPanel);
+      async function loadPersonalChatRequests() {
+        requestsList.replaceChildren(el('p', 'Loading requestsâ€¦', 'connection-empty'));
+        try {
+          const response = await fetch('/api/me/personal-chat-requests');
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          const requests = await response.json();
+          requestsList.replaceChildren();
+          if (!requests.length) { requestsList.append(el('p', 'No personal chat requests yet.', 'connection-empty')); return; }
+          requests.forEach(request => {
+            const row = el('div', undefined, 'talk-request-row');
+            const description = el('span');
+            description.append(profileLink(request.username, '@' + request.username), el('span', ' Â· ' + (request.incoming ? 'Incoming' : 'Sent') + ' Â· ' + request.status, 'talk-request-status'));
+            row.append(description);
+            const actions = el('div', undefined, 'talk-request-actions');
+            if (request.incoming && request.status === 'pending') {
+              const accept = el('button', 'Accept');
+              accept.onclick = async () => { accept.disabled = true; try { const result = await post('/api/personal-chat-requests/' + request.id + '/accept'); if (!result.ok) throw new Error('HTTP ' + result.status); const data = await result.json(); activeConversationId = data.conversation_id; location.hash = '#/inbox'; await showInbox(); } catch (error) { console.error('Could not accept chat request:', error); alert('Could not accept this request. Please try again.'); accept.disabled = false; } };
+              const decline = el('button', 'Decline');
+              decline.onclick = async () => { decline.disabled = true; try { const result = await post('/api/personal-chat-requests/' + request.id + '/reject'); if (!result.ok) throw new Error('HTTP ' + result.status); await loadPersonalChatRequests(); } catch (error) { console.error('Could not decline chat request:', error); alert('Could not decline this request. Please try again.'); decline.disabled = false; } };
+              actions.append(accept, decline);
+            } else if (request.status === 'accepted' && request.conversation_id) {
+              const open = el('button', 'Open chat'); open.onclick = async () => { activeConversationId = request.conversation_id; await showInbox(); }; actions.append(open);
+            }
+            row.append(actions); requestsList.append(row);
+          });
+        } catch (error) {
+          console.error('Could not load personal chat requests:', error);
+          requestsList.replaceChildren(el('p', 'Could not load requests. Please try again.', 'connection-error'));
+        }
+      }
+      await loadPersonalChatRequests();
+
+      const layout = el('div', undefined, 'inbox-layout');
+      const sidebar = el('section', undefined, 'conversation-sidebar');
+      const sidebarHead = el('div', undefined, 'conversation-sidebar-head');
+      sidebarHead.append(el('h2', 'Your chats'));
+      const newButton = el('button', 'New message');
+      const createForm = el('form', undefined, 'new-conversation');
+      createForm.hidden = true;
+      const recipientInput = el('input');
+      recipientInput.type = 'text';
+      recipientInput.placeholder = 'Search username, then choose a result';
+      recipientInput.maxLength = 30;
+      recipientInput.autocomplete = 'off';
+      const recipientSuggestions = el('div', undefined, 'recipient-suggestions');
+      recipientSuggestions.hidden = true;
+      recipientSuggestions.setAttribute('role', 'listbox');
+      const selectedRecipients = el('div', undefined, 'selected-recipients');
+      const selectedUsernames = new Set();
+      let groupMode = false;
+      const titleInput = el('input');
+      titleInput.type = 'text';
+      titleInput.placeholder = 'Group name';
+      titleInput.maxLength = 60;
+      titleInput.hidden = true;
+      const groupModeButton = el('button', 'Create group');
+      groupModeButton.type = 'button';
+      groupModeButton.onclick = () => {
+        groupMode = true;
+        titleInput.hidden = false;
+        createSubmit.textContent = 'Create group';
+        groupModeButton.hidden = true;
+        createError.textContent = 'Select at least two people for a group chat.';
+        recipientInput.focus();
+      };
+      const createError = el('span', undefined, 'hint');
+      const createSubmit = el('button', 'Start chat');
+      createForm.append(
+        groupModeButton,
+        recipientInput,
+        recipientSuggestions,
+        el('span', 'Type at least 2 letters, then select a matching username.', 'hint'),
+        selectedRecipients,
+        titleInput,
+        createSubmit,
+        createError,
+      );
+      let searchRequest = 0;
+      function addRecipient(username) {
+        const maxRecipients = groupMode ? 9 : 1;
+        if (selectedUsernames.size >= maxRecipients) {
+          createError.textContent = groupMode ? 'You can add up to 9 people.' : 'Choose Create group to add more than one person.';
+          return;
+        }
+        selectedUsernames.add(username);
+        recipientInput.value = '';
+        recipientSuggestions.hidden = true;
+        recipientSuggestions.textContent = '';
+        createError.textContent = '';
+        renderSelectedRecipients();
+        recipientInput.focus();
+      }
+      recipientInput.oninput = async () => {
+        const request = ++searchRequest;
+        const query = recipientInput.value.trim();
+        if (query.length < 2) {
+          recipientSuggestions.hidden = true;
+          recipientSuggestions.textContent = '';
+          return;
+        }
+        recipientSuggestions.hidden = false;
+        recipientSuggestions.replaceChildren(el('p', 'Searching...'));
+        try {
+          const response = await fetch('/api/users/search?q=' + encodeURIComponent(query));
+          if (request !== searchRequest) return;
+          if (!response.ok) throw new Error('User search request failed.');
+          const users = await response.json();
+          const matches = users.filter(user => !selectedUsernames.has(user.username));
+          recipientSuggestions.textContent = '';
+          if (matches.length === 0) {
+            recipientSuggestions.append(el('p', 'No matching users found.'));
+            return;
+          }
+          matches.forEach(user => {
+            const option = el('button', '@' + user.username);
+            option.type = 'button';
+            option.dataset.username = user.username;
+            option.setAttribute('role', 'option');
+            option.onclick = () => addRecipient(user.username);
+            recipientSuggestions.append(option);
+          });
+        } catch {
+          if (request !== searchRequest) return;
+          recipientSuggestions.replaceChildren(el('p', 'Could not search users. Please try again.'));
+        }
+      };
+      recipientInput.onkeydown = event => {
+        if (event.key !== 'Enter') return;
+        const query = recipientInput.value.trim();
+        if (!query) return;
+        event.preventDefault();
+        const options = Array.from(recipientSuggestions.querySelectorAll('button'));
+        const match = options.find(option =>
+          option.dataset.username.toLowerCase() === query.toLowerCase());
+        const option = match || (options.length === 1 ? options[0] : null);
+        if (option) {
+          option.click();
+        } else if (options.length > 1) {
+          options[0].focus();
+        }
+      };
+      function renderSelectedRecipients() {
+        selectedRecipients.textContent = '';
+        selectedUsernames.forEach(username => {
+          const chip = el('span', undefined, 'recipient-chip');
+          const remove = el('button', 'Ã—');
+          remove.type = 'button';
+          remove.setAttribute('aria-label', 'Remove ' + username);
+          remove.onclick = () => {
+            selectedUsernames.delete(username);
+            renderSelectedRecipients();
+          };
+          chip.append(el('span', '@' + username), remove);
+          selectedRecipients.append(chip);
+        });
+      }
+      newButton.onclick = () => {
+        createForm.hidden = !createForm.hidden;
+        if (!createForm.hidden) {
+          groupMode = false;
+          titleInput.hidden = true;
+          titleInput.value = '';
+          groupModeButton.hidden = false;
+          selectedUsernames.clear();
+          renderSelectedRecipients();
+          createError.textContent = '';
+        }
+        createSubmit.textContent = 'Start chat';
+        if (!createForm.hidden) recipientInput.focus();
+      };
+      createForm.onsubmit = async event => {
+        event.preventDefault();
+        const usernames = Array.from(selectedUsernames);
+        if (usernames.length === 0 || (groupMode && usernames.length < 2)) {
+          createError.textContent = groupMode ? 'Select at least two people for a group chat.' : 'Search for and select one person.';
+          return;
+        }
+        createSubmit.disabled = true;
+        createError.textContent = '';
+        try {
+          const response = await post('/api/conversations', {
+            usernames,
+            title: titleInput.value,
+          });
+          if (response.ok) {
+            const result = await response.json();
+            activeConversationId = result.id;
+            selectedUsernames.clear();
+            renderSelectedRecipients();
+            recipientInput.value = '';
+            titleInput.value = '';
+            groupMode = false;
+            titleInput.hidden = true;
+            groupModeButton.hidden = false;
+            createForm.hidden = true;
+            chat.hidden = false;
+            chat.classList.add('chat-window');
+            await loadMessages(activeConversationId);
+            await loadConversations();
+          } else if (response.status === 400) {
+            createError.textContent = 'Select 1â€“9 existing users other than yourself.';
+          } else if (response.status === 401) {
+            createError.textContent = 'Please log in again.';
+          } else {
+            createError.textContent = 'Could not start that conversation.';
+          }
+        } catch {
+          createError.textContent = 'Could not start that conversation. Check your connection and try again.';
+        } finally {
+          createSubmit.disabled = false;
+        }
+      };
+      const conversationList = el('div', undefined, 'conversation-list');
+      let inboxFilter = 'all';
+      let cachedConversations = [];
+      const messageFilters = el('div', undefined, 'message-filters');
+      const filterButtons = {};
+      [['all', 'All'], ['unread', 'Unread'], ['groups', 'Groups'], ['community', 'Community']].forEach(([key, label]) => {
+        const button = el('button', label, 'message-filter' + (key === inboxFilter ? ' active' : ''));
+        button.type = 'button';
+        button.onclick = () => {
+          inboxFilter = key;
+          Object.entries(filterButtons).forEach(([name, item]) => item.classList.toggle('active', name === key));
+          renderConversationItems();
+        };
+        filterButtons[key] = button;
+        messageFilters.append(button);
+      });
+      sidebarHead.append(newButton);
+      sidebar.append(sidebarHead, createForm, messageFilters, conversationList);
+
+      const chat = el('section', undefined, 'chat-pane');
+      chat.hidden = true;
+      const heading = el('div', undefined, 'chat-heading');
+      const headingTitle = el('span', 'Choose a conversation', 'chat-heading-title');
+      const chatActions = el('div', undefined, 'chat-actions');
+      const chatMenu = el('details');
+      const chatMenuSummary = el('summary', 'â‹¯');
+      const chatMenuItems = el('div', undefined, 'chat-menu');
+      const makeGroupAction = el('button', 'Create group chat');
+      makeGroupAction.type = 'button';
+      makeGroupAction.onclick = () => {
+        const active = cachedConversations.find(item => item.id === activeConversationId);
+        if (!active) return;
+        selectedUsernames.clear();
+        active.members.filter(name => name !== currentUsername).forEach(name => selectedUsernames.add(name));
+        renderSelectedRecipients();
+        titleInput.value = '';
+        groupMode = true;
+        titleInput.hidden = false;
+        groupModeButton.hidden = true;
+        createForm.hidden = false;
+        createSubmit.textContent = 'Create group';
+        chatMenu.open = false;
+        recipientInput.focus();
+      };
+      const viewProfileAction = el('button', 'View profile');
+      viewProfileAction.type = 'button';
+      viewProfileAction.onclick = () => {
+        const active = cachedConversations.find(item => item.id === activeConversationId);
+        const username = active?.members.find(name => name !== currentUsername);
+        if (username) location.hash = '#/u/' + encodeURIComponent(username);
+      };
+      const deleteChatAction = el('button', 'Delete chat from my inbox');
+      deleteChatAction.type = 'button';
+      deleteChatAction.onclick = async () => {
+        if (!activeConversationId || !confirm('Remove this chat from your inbox?')) return;
+        const response = await fetch('/api/conversations/' + activeConversationId, { method: 'DELETE' });
+        if (!response.ok) { alert('Could not remove this chat.'); return; }
+        chatMenu.open = false;
+        activeConversationId = null;
+        chat.hidden = true;
+        chat.classList.remove('chat-window');
+        await loadConversations();
+      };
+      const renameGroupAction = el('button', 'Rename group');
+      renameGroupAction.type = 'button';
+      renameGroupAction.onclick = async () => {
+        const active = cachedConversations.find(item => item.id === activeConversationId);
+        if (!active?.is_owner) return;
+        const title = prompt('Enter a name for this group:', active.title || '');
+        if (title === null || !title.trim()) return;
+        const response = await fetch('/api/conversations/' + active.id, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: title.trim() }),
+        });
+        if (!response.ok) { alert('Could not rename this group.'); return; }
+        chatMenu.open = false;
+        await loadConversations();
+      };
+      const viewMembersAction = el('button', 'View group members');
+      viewMembersAction.type = 'button';
+      viewMembersAction.onclick = async () => {
+        if (!activeConversationId) return;
+        const response = await fetch('/api/conversations/' + activeConversationId + '/members');
+        if (!response.ok) { alert('Could not load group members.'); return; }
+        const members = await response.json();
+        alert('Group members:\n' + members.map(member => '@' + member.username + (member.is_owner ? ' (owner)' : '')).join('\n'));
+        chatMenu.open = false;
+      };
+      const removeGroupMemberAction = el('button', 'Remove a member');
+      removeGroupMemberAction.type = 'button';
+      removeGroupMemberAction.onclick = async () => {
+        const active = cachedConversations.find(item => item.id === activeConversationId);
+        if (!active?.is_owner) return;
+        const response = await fetch('/api/conversations/' + active.id + '/members');
+        if (!response.ok) { alert('Could not load group members.'); return; }
+        const members = (await response.json()).filter(member => !member.is_owner);
+        if (!members.length) { alert('There are no other group members to remove.'); return; }
+        const usernames = members.map(member => member.username);
+        const username = prompt('Enter the username to remove:\n' + usernames.map(name => '@' + name).join('\n'));
+        if (username === null) return;
+        const member = members.find(item => item.username.toLowerCase() === username.trim().replace(/^@/, '').toLowerCase());
+        if (!member) { alert('That username is not a removable member of this group.'); return; }
+        if (!confirm('Remove @' + member.username + ' from this group?')) return;
+        const removed = await fetch('/api/conversations/' + active.id + '/members/' + member.id, { method: 'DELETE' });
+        if (!removed.ok) { alert('Could not remove that member.'); return; }
+        chatMenu.open = false;
+        await loadConversations();
+      };
+      const clearGroupMessagesAction = el('button', 'Delete all group messages');
+      clearGroupMessagesAction.type = 'button';
+      clearGroupMessagesAction.onclick = async () => {
+        const active = cachedConversations.find(item => item.id === activeConversationId);
+        if (!active?.is_owner || !confirm('Permanently delete every message in this group?')) return;
+        const response = await fetch('/api/conversations/' + active.id + '/messages', { method: 'DELETE' });
+        if (!response.ok) { alert('Could not delete the group messages.'); return; }
+        chatMenu.open = false;
+        await loadConversations();
+        await loadMessages(active.id);
+      };
+      const deleteGroupAction = el('button', 'Delete group chat');
+      deleteGroupAction.type = 'button';
+      deleteGroupAction.onclick = async () => {
+        const active = cachedConversations.find(item => item.id === activeConversationId);
+        if (!active?.is_owner || !confirm('Delete this group and its messages for every member? This cannot be undone.')) return;
+        const response = await fetch('/api/conversations/' + active.id + '/group', { method: 'DELETE' });
+        if (!response.ok) { alert('Could not delete the group.'); return; }
+        chatMenu.open = false;
+        activeConversationId = null;
+        chat.hidden = true;
+        chat.classList.remove('chat-window');
+        await loadConversations();
+      };
+      const reportChatAction = el('button', 'Report chat');
+      reportChatAction.type = 'button';
+      reportChatAction.onclick = async () => {
+        if (!activeConversationId) return;
+        const details = prompt('Why are you reporting this chat? (optional)') || '';
+        const response = await fetch('/api/conversations/' + activeConversationId + '/report', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ details }),
+        });
+        chatMenu.open = false;
+        alert(response.ok ? 'Your report was sent to the admin team.' : 'Could not report this chat.');
+      };
+      chatMenuItems.append(makeGroupAction, renameGroupAction, viewMembersAction, removeGroupMemberAction,
+        clearGroupMessagesAction, deleteGroupAction, viewProfileAction, deleteChatAction, reportChatAction);
+      function updateChatMenuActions() {
+        const active = cachedConversations.find(item => item.id === activeConversationId);
+        const isGroup = Boolean(active?.is_group);
+        makeGroupAction.hidden = !active;
+        renameGroupAction.hidden = !isGroup || !active.is_owner;
+        viewMembersAction.hidden = !isGroup;
+        removeGroupMemberAction.hidden = !isGroup || !active.is_owner;
+        clearGroupMessagesAction.hidden = !isGroup || !active.is_owner;
+        deleteGroupAction.hidden = !isGroup || !active.is_owner;
+        viewProfileAction.hidden = isGroup || !active;
+        deleteChatAction.hidden = !active || (isGroup && Boolean(active.is_owner));
+        reportChatAction.hidden = !active;
+        deleteChatAction.textContent = isGroup ? 'Leave group chat' : 'Delete chat from my inbox';
+      }
+      chatMenu.append(chatMenuSummary, chatMenuItems);
+      updateChatMenuActions();
+      const closeChat = el('button', 'Ã—');
+      closeChat.type = 'button'; closeChat.setAttribute('aria-label', 'Close chat');
+      closeChat.onclick = () => { chat.hidden = true; chat.classList.remove('chat-window'); };
+      chatActions.append(chatMenu, closeChat);
+      heading.append(headingTitle, chatActions);
+      const messageList = el('div', undefined, 'message-list');
+      messageList.append(el('p', 'Choose a conversation or start a new one.', 'message-empty'));
+      const messageForm = el('form', undefined, 'message-composer');
+      const messageInput = el('input');
+      messageInput.type = 'text';
+      messageInput.placeholder = 'Write a message...';
+      messageInput.maxLength = 2000;
+      const imageInput = el('input');
+      imageInput.type = 'file';
+      imageInput.accept = 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm';
+      const emojiButton = el('button', 'â˜º', 'media-tool emoji-trigger'); emojiButton.type = 'button'; emojiButton.title = 'Add emoji';
+      const gifButton = el('button', 'GIF', 'media-tool chat-media-trigger'); gifButton.type = 'button'; gifButton.title = 'Choose a GIF';
+      const stickerButton = el('button', 'â–§', 'media-tool chat-media-trigger'); stickerButton.type = 'button'; stickerButton.title = 'Choose a sticker'; stickerButton.setAttribute('aria-label', 'Choose a sticker');
+      const plusButton = el('button', '+', 'media-tool'); plusButton.type = 'button'; plusButton.title = 'Add a photo or video';
+      const emojiTray = el('div', undefined, 'emoji-tray'); emojiTray.hidden = true;
+      const mediaPicker = el('section', undefined, 'chat-media-picker'); mediaPicker.hidden = true;
+      const pickerHead = el('div', undefined, 'chat-media-picker-head');
+      const mediaSearch = el('input'); mediaSearch.type = 'search'; mediaSearch.placeholder = 'Search GIFs'; mediaSearch.setAttribute('aria-label', 'Search GIFs or stickers');
+      const mediaSearchButton = el('button', 'Search'); mediaSearchButton.type = 'button';
+      pickerHead.append(mediaSearch, mediaSearchButton);
+      const mediaStatus = el('p', 'Search online GIFs and stickers to send.', 'chat-media-status');
+      const mediaResults = el('div', undefined, 'chat-media-results');
+      mediaPicker.append(pickerHead, mediaStatus, mediaResults);
+      ['ðŸ˜€', 'ðŸ˜‚', 'ðŸ¥°', 'ðŸ˜', 'ðŸ˜Š', 'ðŸ˜‰', 'ðŸ˜­', 'ðŸ˜Ž', 'ðŸ¤—', 'â¤ï¸', 'ðŸ‘', 'ðŸŽ‰', 'ðŸ™', 'ðŸ”¥', 'âœ¨', 'ðŸ’¬'].forEach(emoji => {
+        const pick = el('button', emoji); pick.type = 'button';
+        pick.onclick = () => { messageInput.value += emoji; messageInput.focus(); };
+        emojiTray.append(pick);
+      });
+      emojiButton.onclick = () => { mediaPicker.hidden = true; chatMenu.open = false; emojiTray.hidden = !emojiTray.hidden; };
+      let mediaKind = 'gifs';
+      async function searchChatMedia() {
+        const query = mediaSearch.value.trim();
+        if (query.length < 1) { mediaStatus.textContent = 'Enter a search term.'; return; }
+        mediaSearchButton.disabled = true;
+        mediaStatus.textContent = 'Searchingâ€¦';
+        mediaResults.replaceChildren();
+        try {
+          const response = await fetch('/api/chat-media/search?q=' + encodeURIComponent(query) + '&kind=' + mediaKind);
+          if (response.status === 503) throw new Error('Online media search is temporarily unavailable.');
+          if (response.status === 502) throw new Error('GIPHY could not be reached or rejected the API key. Check the key and server internet connection.');
+          if (response.status === 404) throw new Error('Restart the Rust app so it loads the GIF and sticker search endpoint.');
+          if (response.status === 401) throw new Error('Please log in again to search GIFs and stickers.');
+          if (!response.ok) throw new Error('GIF search failed (server status ' + response.status + ').');
+          const results = await response.json();
+          if (!results.length) { mediaStatus.textContent = 'No results found.'; return; }
+          const commonsResults = results.some(result => result.media_url.includes('wikimedia.org'));
+          mediaStatus.textContent = commonsResults ? 'Choose one to send Â· Wikimedia Commons' : 'Choose one to send Â· GIPHY';
+          results.forEach(result => {
+            const pick = el('button'); pick.type = 'button'; pick.title = result.title || 'Send media';
+            const preview = el('img'); preview.src = result.preview_url; preview.alt = result.title || (mediaKind === 'stickers' ? 'Sticker' : 'GIF'); preview.loading = 'lazy';
+            pick.append(preview);
+            pick.onclick = () => sendRemoteMedia(result.media_url);
+            const tile = el('div', undefined, 'chat-media-tile'); tile.append(pick);
+            if (result.source_url && result.media_url.includes('wikimedia.org')) { const credit = el('a', 'Source', 'chat-media-credit'); credit.href = result.source_url; credit.target = '_blank'; credit.rel = 'noopener noreferrer'; tile.append(credit); }
+            mediaResults.append(tile);
+          });
+        } catch (error) { mediaStatus.textContent = error.message; }
+        finally { mediaSearchButton.disabled = false; }
+      }
+      async function openMediaPicker(kind) {
+        if (!mediaPicker.hidden && mediaKind === kind) { mediaPicker.hidden = true; return; }
+        const kindChanged = mediaKind !== kind;
+        mediaKind = kind;
+        mediaSearch.placeholder = kind === 'stickers' ? 'Search stickers' : 'Search GIFs';
+        mediaPicker.hidden = false;
+        emojiTray.hidden = true;
+        chatMenu.open = false;
+        mediaSearch.focus();
+        if (kindChanged) mediaResults.replaceChildren();
+        if (kindChanged || !mediaResults.childElementCount) {
+          if (!mediaSearch.value.trim()) mediaSearch.value = 'trending';
+          await searchChatMedia();
+        }
+      }
+      async function sendRemoteMedia(url) {
+        if (activeConversationId === null) { messageHint.textContent = 'Choose a conversation first.'; return; }
+        const data = new FormData(); data.append('body', messageInput.value); data.append('remote_media_url', url);
+        sendButton.disabled = true; messageHint.textContent = 'Sendingâ€¦';
+        try {
+          const response = await fetch('/api/conversations/' + activeConversationId + '/messages', { method: 'POST', body: data });
+          if (!response.ok) throw new Error(response.status === 403 ? 'This chat is muted by an administrator.' : 'Could not send this media.');
+          messageInput.value = ''; mediaPicker.hidden = true; mediaResults.replaceChildren();
+          messageHint.textContent = 'Photos, GIFs, and videos up to 50 MB. Messages refresh every 5 seconds.';
+          await loadConversations(); await loadMessages(activeConversationId);
+        } catch (error) { messageHint.textContent = error.message; }
+        finally { sendButton.disabled = false; }
+      }
+      gifButton.onclick = () => openMediaPicker('gifs');
+      stickerButton.onclick = () => openMediaPicker('stickers');
+      mediaSearchButton.onclick = searchChatMedia;
+      mediaSearch.onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); searchChatMedia(); } };
+      plusButton.onclick = () => { imageInput.accept = 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm'; imageInput.click(); };
+      const sendButton = el('button', 'Send');
+      sendButton.type = 'submit';
+      messageForm.append(emojiButton, gifButton, stickerButton, plusButton, messageInput, imageInput, sendButton);
+      const messageHint = el('p', 'Photos, GIFs, and videos up to 50 MB. Messages refresh every 5 seconds.', 'inbox-note');
+      messageForm.onsubmit = async event => {
+        event.preventDefault();
+        if (activeConversationId === null) {
+          messageHint.textContent = 'Choose or start a conversation first.';
+          return;
+        }
+        if (!messageInput.value.trim() && !imageInput.files[0]) {
+          messageHint.textContent = 'Write a message or choose a picture.';
+          return;
+        }
+        const data = new FormData();
+        data.append('body', messageInput.value);
+        if (imageInput.files[0]) data.append('image', imageInput.files[0]);
+        sendButton.disabled = true;
+        sendButton.textContent = 'Sending...';
+        messageHint.textContent = 'Sending your message...';
+        try {
+          const response = await fetch('/api/conversations/' + activeConversationId + '/messages', {
+            method: 'POST',
+            body: data,
+          });
+          if (response.ok) {
+            messageInput.value = '';
+            imageInput.value = '';
+            messageHint.textContent = 'Photos, GIFs, and videos up to 50 MB. Messages refresh every 5 seconds.';
+            await loadConversations();
+            await loadMessages(activeConversationId);
+          } else if (response.status === 413) {
+            messageHint.textContent = 'Media too large (max 50 MB).';
+          } else if (response.status === 415) {
+            messageHint.textContent = 'Choose a JPEG, PNG, WebP, GIF, MP4, or WebM file.';
+          } else if (response.status === 400) {
+            messageHint.textContent = 'Write a message up to 2,000 characters, or attach a picture.';
+          } else if (response.status === 401) {
+            messageHint.textContent = 'Please log in again.';
+          } else if (response.status === 403) {
+            messageHint.textContent = 'This chat has been muted by an administrator.';
+          } else if (response.status === 404) {
+            messageHint.textContent = 'This conversation is no longer available. Select it again or start a new chat.';
+          } else {
+            messageHint.textContent = 'Message could not be sent (server error ' + response.status + '). Please try again.';
+          }
+        } catch (error) {
+          console.error('Could not send message:', error);
+          messageHint.textContent = 'Message could not be sent. Check your connection and try again.';
+        } finally {
+          sendButton.disabled = false;
+          sendButton.textContent = 'Send';
+        }
+      };
+      chat.append(heading, messageList, emojiTray, mediaPicker, messageForm, messageHint);
+      layout.append(sidebar, chat);
+      view.append(layout);
+
+      await loadConversations();
+      if (activeConversationId !== null && !chat.hidden) await loadMessages(activeConversationId);
+      inboxPoll = setInterval(async () => {
+        await loadConversations();
+        if (activeConversationId !== null && !chat.hidden) await loadMessages(activeConversationId);
+      }, 5000);
+
+      async function loadConversations() {
+        const response = await fetch('/api/conversations');
+        if (!response.ok) {
+          conversationList.replaceChildren(el('p', 'Could not load your conversations.', 'activity-empty'));
+          return;
+        }
+        cachedConversations = await response.json();
+        updateChatMenuActions();
+        conversationList.textContent = '';
+        if (cachedConversations.length === 0) {
+          conversationList.append(el('p', 'Your conversations will appear here.', 'activity-empty'));
+          activeConversationId = null;
+          headingTitle.textContent = 'Choose a conversation';
+          messageList.replaceChildren(el('p', 'Start a chat to say hello.', 'message-empty'));
+          messageInput.disabled = false; sendButton.disabled = false;
+          return;
+        }
+        if (!cachedConversations.some(conversation => conversation.id === activeConversationId)) {
+          activeConversationId = cachedConversations[0].id;
+        }
+        renderConversationItems();
+        if (activeConversationId !== null) {
+          const active = cachedConversations.find(conversation => conversation.id === activeConversationId);
+          if (active) headingTitle.textContent = active.title ||
+            active.members.filter(name => name !== currentUsername).join(', ') || 'Conversation';
+          const muted = Boolean(active?.is_muted);
+          messageInput.disabled = muted;
+          sendButton.disabled = muted;
+          emojiButton.disabled = muted; gifButton.disabled = muted; stickerButton.disabled = muted; plusButton.disabled = muted;
+          messageHint.textContent = muted ? 'This chat has been muted by an administrator. You can still view its messages.' : 'Photos, GIFs, and videos up to 50 MB. Messages refresh every 5 seconds.';
+        }
+        updateChatMenuActions();
+      }
+
+      function renderConversationItems() {
+        conversationList.textContent = '';
+        const visibleConversations = cachedConversations.filter(conversation => {
+          if (inboxFilter === 'unread') return conversation.unread_count > 0;
+          if (inboxFilter === 'groups') return conversation.is_group;
+          if (inboxFilter === 'community') return conversation.is_group && /community/i.test(conversation.title || '');
+          return true;
+        });
+        if (visibleConversations.length === 0) {
+          conversationList.append(el('p', inboxFilter === 'unread' ? 'No unread messages.' :
+            inboxFilter === 'community' ? 'No community chats yet.' : 'No chats in this view.', 'activity-empty'));
+          return;
+        }
+        visibleConversations.forEach(conversation => {
+          const item = el('button', undefined, 'conversation-item' +
+            (conversation.id === activeConversationId ? ' active' : ''));
+          const avatar = el('div', conversation.is_group ? 'G' : (conversation.members.find(name => name !== currentUsername) || '?')[0].toUpperCase(), 'activity-icon');
+          const copy = el('span', undefined, 'conversation-copy');
+          const title = conversation.title ||
+            conversation.members.filter(name => name !== currentUsername).join(', ');
+          const name = el('span', title || 'Conversation', 'conversation-name');
+          if (conversation.is_muted) name.append(el('span', ' Â· Muted', 'conversation-unread'));
+          if (conversation.unread_count > 0) name.append(el('span', String(conversation.unread_count), 'conversation-unread'));
+          copy.append(name, el('span', conversation.latest_message || 'No messages yet', 'conversation-preview'));
+          item.append(avatar, copy);
+          item.onclick = async () => {
+            activeConversationId = conversation.id;
+            chat.hidden = false;
+            chat.classList.add('chat-window');
+            await loadMessages(conversation.id);
+            await loadConversations();
+          };
+          conversationList.append(item);
+        });
+      }
+
+      async function loadMessages(conversationId) {
+        if (conversationId === null || conversationId !== activeConversationId) return;
+        const response = await fetch('/api/conversations/' + conversationId + '/messages');
+        if (!response.ok) {
+          messageList.replaceChildren(el('p', 'Could not load messages for this conversation.', 'message-empty'));
+          return;
+        }
+        const messages = await response.json();
+        if (conversationId !== activeConversationId) return;
+        messageList.textContent = '';
+        if (messages.length === 0) {
+          messageList.append(el('p', 'No messages yet. Say hello!', 'message-empty'));
+          return;
+        }
+        messages.forEach(message => {
+          const bubble = el('div', undefined, 'message-bubble' +
+            (message.sender === currentUsername ? ' mine' : ''));
+          if (message.sender !== currentUsername) {
+            bubble.append(el('span', message.sender, 'message-sender'));
+          }
+          if (message.body) bubble.append(el('div', message.body));
+          if (message.image_url) {
+            if (message.media_type === 'video') {
+              const video = el('video');
+              video.src = message.image_url;
+              video.controls = true;
+              video.playsInline = true;
+              video.className = 'message-media';
+              bubble.append(video);
+            } else {
+              const image = el('img');
+              image.src = message.image_url;
+              image.alt = 'Media shared by ' + message.sender;
+              image.className = 'message-media';
+              bubble.append(image);
+            }
+          }
+          bubble.append(el('span', new Date(message.created_at).toLocaleString(), 'message-time'));
+          if (message.can_delete) {
+            const remove = el('button', 'Delete', 'message-delete');
+            remove.type = 'button';
+            remove.title = 'Delete this message';
+            remove.onclick = async () => {
+              if (!confirm('Delete this message?')) return;
+              const result = await fetch('/api/conversations/' + conversationId + '/messages/' + message.id, { method: 'DELETE' });
+              if (!result.ok) { alert('Could not delete this message.'); return; }
+              await loadConversations();
+              await loadMessages(conversationId);
+            };
+            bubble.append(remove);
+          }
+          messageList.append(bubble);
+        });
+        messageList.scrollTop = messageList.scrollHeight;
+      }
+    }
+
+    // ---------- feed ----------
+    async function loadFeed() {
+      const url = scope === 'following' ? '/api/feed?scope=following' : '/api/feed';
+      const posts = await (await fetch(url)).json();
+      const feed = document.getElementById('feed');
+      feed.textContent = '';
+
+      if (posts.length === 0) {
+        feed.append(el('p', scope === 'following'
+          ? 'Nothing here yet. Click a username to visit a profile and follow them.'
+          : 'No posts yet.', 'empty'));
+        return;
+      }
+
+      posts.forEach(p => {
+        const card = el('div', undefined, 'card');
+        const user = el('div', undefined, 'user');
+        const author = el('span', undefined, 'post-author');
+        author.append(userLink(p.user));
+        const icon = moodIcon(p.mood);
+        if (icon) {
+          const mood = el('span', icon, 'post-author-mood');
+          mood.title = p.mood;
+          mood.setAttribute('role', 'img');
+          mood.setAttribute('aria-label', 'Mood: ' + p.mood);
+          author.append(mood);
+        }
+        user.append(avatarEl(p.avatar_url), author);
+        if (loggedIn) {
+          const userControls = el('div', undefined, 'post-user-controls');
+          const userActions = el('details', undefined, 'post-user-actions');
+          const userActionsLabel = el('summary', 'Actions');
+          userActionsLabel.setAttribute('aria-label', 'Post actions for @' + p.user);
+          const userMenu = el('div', undefined, 'post-user-menu');
+          const actionStatus = el('p', undefined, 'report-status');
+
+          if (p.user !== currentUsername) {
+            const followButton = el('button', p.followed_by_me ? 'Unfollow' : 'Follow', 'post-follow-button');
+            followButton.type = 'button';
+            followButton.setAttribute('aria-pressed', String(p.followed_by_me));
+            const followStatus = el('span', undefined, 'post-follow-status');
+            followStatus.setAttribute('role', 'status');
+            followButton.onclick = async () => {
+              followButton.disabled = true;
+              followStatus.textContent = '';
+              try {
+                const response = await fetch('/api/users/' + encodeURIComponent(p.user) + '/follow', {

@@ -1,149 +1,1507 @@
----- posts table ----
-                                          Table "public.posts"
-      Column      |           Type           | Collation | Nullable |              Default              
-------------------+--------------------------+-----------+----------+-----------------------------------
- id               | integer                  |           | not null | nextval('posts_id_seq'::regclass)
- user_id          | integer                  |           | not null | 
- image_url        | text                     |           | not null | 
- caption          | text                     |           | not null | ''::text
- created_at       | timestamp with time zone |           | not null | now()
- reshared_from_id | integer                  |           |          | 
- media_type       | text                     |           | not null | 'image'::text
-Indexes:
-    "posts_pkey" PRIMARY KEY, btree (id)
-    "posts_one_reshare_per_user_idx" UNIQUE, btree (user_id, reshared_from_id) WHERE reshared_from_id IS NOT NULL
-    "posts_reshared_from_idx" btree (reshared_from_id)
-Check constraints:
-    "posts_media_type_check" CHECK (media_type = ANY (ARRAY['image'::text, 'video'::text]))
-Foreign-key constraints:
-    "posts_reshared_from_id_fkey" FOREIGN KEY (reshared_from_id) REFERENCES posts(id) ON DELETE CASCADE
-    "posts_user_id_fkey" FOREIGN KEY (user_id) REFERENCES users(id)
-Referenced by:
-    TABLE "activity_notifications" CONSTRAINT "activity_notifications_post_id_fkey" FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
-    TABLE "comments" CONSTRAINT "comments_post_id_fkey" FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
-    TABLE "post_dislikes" CONSTRAINT "post_dislikes_post_id_fkey" FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
-    TABLE "post_hates" CONSTRAINT "post_hates_post_id_fkey" FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
-    TABLE "post_likes" CONSTRAINT "post_likes_post_id_fkey" FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
-    TABLE "post_reports" CONSTRAINT "post_reports_post_id_fkey" FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
-    TABLE "post_tags" CONSTRAINT "post_tags_post_id_fkey" FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
-    TABLE "posts" CONSTRAINT "posts_reshared_from_id_fkey" FOREIGN KEY (reshared_from_id) REFERENCES posts(id) ON DELETE CASCADE
+==== migration: friends_communities ====
+CREATE TABLE IF NOT EXISTS communities (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    created_by INT REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS communities_name_lower_idx ON communities (lower(name));
 
----- main.rs: posts and uploads ----
-7: extract::{DefaultBodyLimit, Multipart, Path, Query, State},
-15: use tower_http::services::ServeDir;
-41: media_type: String,
-42: caption: String,
-165: media_type: String,
-464: p.media_type,
-465: p.caption,
-1314: // Saves an image under a random name and returns its URL (like "/uploads/<id>.jpg").
-1315: // The extension is chosen by us, so uploads can't overwrite each other or sneak in
-1319: tokio::fs::create_dir_all("static/uploads")
-1322: eprintln!("could not create uploads folder: {e}");
-1325: tokio::fs::write(format!("static/uploads/{filename}"), bytes)
-1331: Ok(format!("/uploads/{filename}"))
-1336: tokio::fs::create_dir_all("private_uploads")
-1339: eprintln!("could not create private uploads folder: {e}");
-1342: tokio::fs::write(format!("private_uploads/{filename}"), bytes)
-1353: if let Some(name) = url.strip_prefix("/uploads/") {
-1357: let _ = tokio::fs::remove_file(format!("static/uploads/{name}")).await;
-1368: let _ = tokio::fs::remove_file(format!("private_uploads/{filename}")).await;
-1372: async fn create_post(
-1375: mut multipart: Multipart,
-1391: let mut caption = String::new();
-1395: while let Some(field) = multipart
-1402: Some("caption") => {
-1403: caption = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?;
-1415: return Err(StatusCode::UNSUPPORTED_MEDIA_TYPE);
-1426: let (bytes, ext, media_type) = media.ok_or(StatusCode::BAD_REQUEST)?;
-1427: let caption = caption.trim();
-1428: if caption.len() > 500 {
-1452: "INSERT INTO posts (user_id, image_url, media_type, caption)
-1457: .bind(media_type)
-1458: .bind(caption)
-1674: INSERT INTO posts (user_id, image_url, caption, media_type, reshared_from_id)
-1675: SELECT $1, source.image_url, source.caption, source.media_type,
-1948: "SELECT id, image_url, media_type
-2185: COALESCE(c.body, p.caption) AS detail,
-2885: mut multipart: Multipart,
-2943: while let Some(field) = multipart
-2956: image_extension(&bytes).ok_or(StatusCode::UNSUPPORTED_MEDIA_TYPE)?;
-3034: let bytes = tokio::fs::read(format!("private_uploads/{path}"))
----- index.html: composer and posts ----
-138: #composer { display: flex; flex-direction: column; gap: 10px; margin: 0 0 18px; padding: 17px; background: white; border: 1px solid var(--line); border-rad
-139: #composer:empty { display: none; }
-140: #composer input[type=text] { width: 100%; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; font: inherit; }
-141: #composer button { align-self: flex-start; padding-inline: 18px; color: white; background: var(--violet); border-color: var(--violet); }
-142: #composer input[type=file] { max-width: 100%; color: var(--muted); font: inherit; font-size: 12px; }
-256: .new-conversation input, .message-composer input[type=text] { width: 100%; min-width: 0; padding: 10px 11px; border: 1px solid var(--line); border-radius: 
-282: .message-composer { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
-283: .message-composer input[type=text] { flex: 1; }
-284: .message-composer input[type=file] { width: 175px; min-width: 0; color: var(--muted); font-size: 10px; }
-285: .message-composer button { color: white; background: var(--violet); border-color: var(--violet); }
-426: .message-composer { flex-wrap: wrap; }
-427: .message-composer input[type=file] { width: 145px; }
-514: <div id="composer"></div>
-1921: const photos = pr.posts.filter(item => item.media_type !== 'video');
-1922: const videos = pr.posts.filter(item => item.media_type === 'video');
-2009: // ---------- composer / auth ----------
-2010: function renderComposer() {
-2011: const box = document.getElementById('composer');
-2019: const cap = el('input'); cap.type = 'text'; cap.placeholder = 'Caption';
-2020: const tags = el('input'); tags.type = 'text'; tags.placeholder = 'Tag people (usernames, comma-separated; up to 10)';
-2027: fd.append('caption', cap.value);
-2037: else if (r.status === 400) msg.textContent = 'Check the photo/video, caption length, and tagged usernames (up to 10 existing users)';
-2049: renderComposer();
-2285: const messageForm = el('form', undefined, 'message-composer');
-2593: if (p.media_type === 'video') {
-2643: meta.append(userLink(p.user), document.createTextNode(' ' + p.caption));
----- index.html: cover ----
-20: body { margin: 0; color: var(--ink); background: radial-gradient(ellipse at 8% 5%, #edf4eb 0, transparent 34%), radial-gradient(ellipse at 94% 28%, #f4ede2 
-23: .logo-mark { width: 31px; height: 31px; border-radius: 11px; display: grid; place-items: center; color: white; font-size: 17px; background: linear-gradient(
-50: .avatar { width: 34px; height: 34px; border-radius: 50%; background: #ded9ea; flex: none; object-fit: cover; display: block; }
-56: .hero { min-height: 278px; position: relative; isolation: isolate; overflow: hidden; display: flex; align-items: center; margin-bottom: 34px; padding: 35px 
-60: .hero-cover { position: absolute; z-index: -1; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-61: .hero.has-cover { background: #28233b; border-color: #28233b; }
-62: .hero.has-cover::before { inset: 0; z-index: 0; width: auto; height: auto; border-radius: 0; background: linear-gradient(90deg, #201c2ee8 0%, #201c2eae 48%,
-63: .hero.has-cover::after { display: none; }
-64: .hero.has-cover .eyebrow, .hero.has-cover h1, .hero.has-cover .hero-copy p { color: white; }
-65: .hero.has-cover h1 em { color: #e2d6ff; }
-76: .hero-cover-actions { position: absolute; z-index: 2; top: 14px; right: 15px; display: grid; justify-items: end; gap: 8px; max-width: min(460px, calc(100% -
-77: .hero-cover-actions[hidden] { display: none; }
-78: .hero-cover-buttons { display: flex; align-items: center; gap: 7px; }
-79: .hero-cover-actions button { padding: 7px 10px; border-color: #ffffffa8; background: #ffffffdf; color: #302b40; font-size: 10px; }
-80: .hero-cover-actions .cover-remove { color: #7d3e4c; }
-81: .hero-cover-feedback { color: var(--muted); font-size: 10px; }
-82: .hero.has-cover .hero-cover-feedback { color: white; text-shadow: 0 1px 5px #0008; }
-83: .cover-editor { display: flex; flex-wrap: wrap; align-items: center; gap: 15px; width: 100%; padding: 10px 12px; border: 1px solid #ffffffb3; border-radius:
-84: .cover-editor .cover-save-close { width: auto; min-height: 29px; flex: none; padding-inline: 10px; color: white; background: var(--violet); border-color: va
-85: .cover-editor[hidden] { display: none; }
-86: .cover-direction-controls { display: grid; grid-template-columns: repeat(3, 32px); grid-template-rows: repeat(3, 29px); gap: 2px; }
-87: .cover-editor button { display: grid; width: 32px; min-height: 29px; place-items: center; padding: 0; border-radius: 7px; font-size: 16px; line-height: 1; }
-88: .cover-editor button:hover { background: #f0ebff; }
-89: .cover-move-up { grid-column: 2; grid-row: 1; }
-90: .cover-move-left { grid-column: 1; grid-row: 2; }
-91: .cover-move-right { grid-column: 3; grid-row: 2; }
-92: .cover-move-down { grid-column: 2; grid-row: 3; }
-93: .cover-zoom-controls { display: flex; align-items: center; gap: 8px; }
-94: .cover-zoom-value { min-width: 42px; color: #514d60; font-size: 11px; text-align: center; }
-95: .cover-editor-hint { flex: 1; color: var(--muted); font-size: 10px; }
-130: @media (max-width: 560px) { .hero-cover-actions { top: 10px; right: 10px; max-width: calc(100% - 20px); } .cover-editor { gap: 8px; padding: 7px; } .cover-
-165: .card img.photo { width: 100%; max-height: 620px; display: block; object-fit: cover; background: #f0edf5; }
-200: .idea:nth-child(1) .idea-swatch { background: linear-gradient(145deg, #d1c3ff, #8e9cf3 55%, #5b78a7); }
-201: .idea:nth-child(2) .idea-swatch { background: linear-gradient(145deg, #ffbd9e, #f58e90 55%, #a26fbd); }
-202: .idea:nth-child(3) .idea-swatch { background: linear-gradient(145deg, #e7a4bd, #b5669b 55%, #705486); }
-203: .idea:nth-child(4) .idea-swatch { background: linear-gradient(145deg, #e7ce9a, #a5bb9a 55%, #6f9789); }
-204: .idea:nth-child(5) .idea-swatch { background: linear-gradient(145deg, #d7a88f, #966c96 55%, #4c648c); }
-205: .idea:nth-child(6) .idea-swatch { background: linear-gradient(145deg, #f1cf7e, #dc8c65 55%, #96537f); }
-206: .idea:nth-child(7) .idea-swatch { background: linear-gradient(145deg, #a8d4d0, #76a8b7 55%, #617aab); }
-207: .idea:nth-child(8) .idea-swatch { background: linear-gradient(145deg, #f3c9a3, #e59775 55%, #b85770); }
-208: .idea:nth-child(9) .idea-swatch { background: linear-gradient(145deg, #b2d6a2, #77a88f 55%, #527c8a); }
-243: .activity-thumb { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; flex: none; }
-328: .grid img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: #eee; border-radius: 12px; }
-333: .gallery-grid video { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: #17151d; border-radius: 12px; }
-465: <a href="#/">Discover</a>
-475: <img id="heroCoverImage" class="hero-cover" alt="" hidden>
-476: <div id="heroCoverActions" class="hero-cover-actions" hidden>
-477: <input id="heroCoverFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
-478: <div class="hero-cover-buttons">
-479: <button id="heroCoverChoose" type="button">Set background image</button>
+CREATE TABLE IF NOT EXISTS community_members (
+    community_id INT NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (community_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS community_posts (
+    id BIGSERIAL PRIMARY KEY,
+    community_id INT NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS community_posts_feed_idx ON community_posts (community_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS community_comments (
+    id BIGSERIAL PRIMARY KEY,
+    community_id INT NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    post_id BIGINT NOT NULL REFERENCES community_posts(id) ON DELETE CASCADE,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    body TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS community_comments_post_idx ON community_comments (post_id, created_at);
+
+INSERT INTO communities (name, description) VALUES
+    ('Men', 'A place for men to connect and support one another.'),
+    ('Women', 'A welcoming space for women to share and support.'),
+    ('Tech', 'Discuss technology, products, careers, and ideas.'),
+    ('Cricket', 'Talk matches, teams, players, and cricket news.')
+ON CONFLICT DO NOTHING;
+==== main.rs: community routes ====
+5719: .route("/api/communities", get(list_communities).post(create_community))
+5720: .route("/api/communities/{id}", put(update_community).delete(delete_community))
+5722: "/api/communities/{id}/image",
+5725: .route("/api/communities/{id}/join", post(join_community).delete(leave_community))
+5726: .route("/api/communities/{id}/claim", post(claim_community))
+5727: .route("/api/communities/{id}/members", get(list_community_members).post(add_community_member))
+5728: .route("/api/communities/{id}/members/{member_id}", delete(remove_community_member))
+5729: .route("/api/communities/{id}/members/{member_id}/status", put(set_community_member_status))
+5730: .route("/api/communities/{id}/members/{member_id}/admin", put(set_community_member_admin))
+5731: .route("/api/communities/{id}/posts", get(list_community_posts).post(create_community_post))
+5732: .route("/api/communities/{id}/posts/{post_id}", delete(delete_community_post))
+5733: .route("/api/communities/{id}/posts/{post_id}/comments", get(list_community_comments).post(create_community_comment))
+5734: .route("/api/communities/{id}/posts/{post_id}/comments/{comment_id}", delete(delete_community_comment))
+==== main.rs: community functions and structs ====
+---- main.rs lines 359-372 ----
+#[derive(Serialize, FromRow)]
+struct CommunitySummary {
+    id: i32,
+    name: String,
+    description: String,
+    image_url: Option<String>,
+    owner: Option<String>,
+    is_member: bool,
+    is_disabled: bool,
+    is_owner: bool,
+    is_admin: bool,
+    member_count: i64,
+    created_at: String,
+}
+---- main.rs lines 374-384 ----
+#[derive(Serialize, FromRow)]
+struct CommunityPost {
+    id: i64,
+    username: String,
+    avatar_url: Option<String>,
+    title: String,
+    body: String,
+    created_at: String,
+    comment_count: i64,
+    can_delete: bool,
+}
+---- main.rs lines 386-393 ----
+#[derive(Serialize, FromRow)]
+struct CommunityComment {
+    id: i64,
+    username: String,
+    body: String,
+    created_at: String,
+    can_delete: bool,
+}
+---- main.rs lines 395-402 ----
+#[derive(Serialize, FromRow)]
+struct CommunityMember {
+    id: i32,
+    username: String,
+    is_owner: bool,
+    is_admin: bool,
+    enabled: bool,
+}
+---- main.rs lines 404-408 ----
+#[derive(Deserialize)]
+struct NewCommunity {
+    name: String,
+    description: Option<String>,
+}
+---- main.rs lines 410-413 ----
+#[derive(Deserialize)]
+struct AddCommunityMember {
+    username: String,
+}
+---- main.rs lines 415-418 ----
+#[derive(Deserialize)]
+struct CommunityMemberStatus {
+    enabled: bool,
+}
+---- main.rs lines 420-423 ----
+#[derive(Deserialize)]
+struct CommunityMemberAdmin {
+    is_admin: bool,
+}
+---- main.rs lines 425-429 ----
+#[derive(Deserialize)]
+struct CommunityPostInput {
+    title: String,
+    body: String,
+}
+---- main.rs lines 431-434 ----
+#[derive(Deserialize)]
+struct CommunityCommentInput {
+    body: String,
+}
+---- main.rs lines 4791-4815 ----
+async fn list_communities(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<CommunitySummary>>, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let groups = sqlx::query_as::<_, CommunitySummary>(
+        r#"SELECT c.id, c.name, c.description, c.image_url, owner.username AS owner,
+                  EXISTS (SELECT 1 FROM community_members mine WHERE mine.community_id = c.id AND mine.user_id = $1 AND mine.is_enabled) AS is_member,
+                  EXISTS (SELECT 1 FROM community_members mine WHERE mine.community_id = c.id AND mine.user_id = $1 AND NOT mine.is_enabled) AS is_disabled,
+                  COALESCE(c.created_by = $1, FALSE) AS is_owner,
+                  EXISTS (SELECT 1 FROM community_members mine WHERE mine.community_id = c.id AND mine.user_id = $1 AND mine.is_enabled AND mine.is_admin) AS is_admin,
+                  (SELECT COUNT(*) FROM community_members cm WHERE cm.community_id = c.id) AS member_count,
+                  to_char(c.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at
+           FROM communities c LEFT JOIN users owner ON owner.id = c.created_by
+           ORDER BY (c.created_by IS NULL) DESC, c.name"#,
+    )
+    .bind(user_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("community list failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(groups))
+}
+---- main.rs lines 4817-4875 ----
+async fn create_community(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Json(input): Json<NewCommunity>,
+) -> Result<(StatusCode, Json<CommunitySummary>), StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let name = input.name.trim();
+    let description = input.description.as_deref().unwrap_or("").trim();
+    if !(3..=50).contains(&name.chars().count()) || description.chars().count() > 500 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let mut tx = pool.begin().await.map_err(|e| {
+        eprintln!("community creation transaction failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let created = sqlx::query_as::<_, (i32,)>(
+        "INSERT INTO communities (name, description, created_by) VALUES ($1, $2, $3) RETURNING id",
+    )
+    .bind(name)
+    .bind(description)
+    .bind(user_id)
+    .fetch_one(&mut *tx)
+    .await;
+    let (community_id,) = match created {
+        Ok(row) => row,
+        Err(sqlx::Error::Database(error)) if error.is_unique_violation() => return Err(StatusCode::CONFLICT),
+        Err(error) => {
+            eprintln!("community creation failed: {error}");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+    sqlx::query("INSERT INTO community_members (community_id, user_id) VALUES ($1, $2)")
+        .bind(community_id)
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            eprintln!("community owner membership creation failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    tx.commit().await.map_err(|e| {
+        eprintln!("community creation commit failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let summary = sqlx::query_as::<_, CommunitySummary>(
+        r#"SELECT c.id, c.name, c.description, c.image_url, owner.username AS owner, TRUE AS is_member, FALSE AS is_disabled, TRUE AS is_owner, FALSE AS is_admin,
+                  1::BIGINT AS member_count,
+                  to_char(c.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at
+           FROM communities c JOIN users owner ON owner.id = c.created_by WHERE c.id = $1"#,
+    )
+    .bind(community_id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("created community lookup failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok((StatusCode::CREATED, Json(summary)))
+}
+---- main.rs lines 4877-4894 ----
+async fn join_community(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(community_id): Path<i32>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM communities WHERE id = $1)")
+        .bind(community_id).fetch_one(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !exists { return Err(StatusCode::NOT_FOUND); }
+    sqlx::query("INSERT INTO community_members (community_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+        .bind(community_id).bind(user_id).execute(&pool).await.map_err(|e| {
+            eprintln!("community join failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    let enabled: bool = sqlx::query_scalar("SELECT is_enabled FROM community_members WHERE community_id = $1 AND user_id = $2")
+        .bind(community_id).bind(user_id).fetch_one(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !enabled { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::NO_CONTENT)
+}
+---- main.rs lines 4896-4913 ----
+async fn claim_community(
+    State(pool): State<PgPool>, headers: HeaderMap, Path(community_id): Path<i32>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let result = sqlx::query("UPDATE communities c SET created_by=$2 WHERE c.id=$1 AND c.created_by IS NULL AND EXISTS(SELECT 1 FROM community_members m WHERE m.community_id=c.id AND m.user_id=$2 AND m.is_enabled)")
+        .bind(community_id).bind(user_id).execute(&pool).await.map_err(|e| {
+            eprintln!("community ownership claim failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if result.rows_affected() == 0 {
+        let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM communities WHERE id=$1)").bind(community_id).fetch_one(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        return Err(if exists { StatusCode::CONFLICT } else { StatusCode::NOT_FOUND });
+    }
+    sqlx::query("INSERT INTO community_members (community_id,user_id,is_enabled) VALUES ($1,$2,TRUE) ON CONFLICT (community_id,user_id) DO UPDATE SET is_enabled=TRUE")
+        .bind(community_id).bind(user_id).execute(&pool).await.map_err(|e| {
+            eprintln!("claimed community membership update failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+---- main.rs lines 4915-4930 ----
+async fn leave_community(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(community_id): Path<i32>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let owner: Option<(Option<i32>,)> = sqlx::query_as("SELECT created_by FROM communities WHERE id = $1")
+        .bind(community_id).fetch_optional(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let Some((owner_id,)) = owner else { return Err(StatusCode::NOT_FOUND); };
+    if owner_id == Some(user_id) { return Err(StatusCode::FORBIDDEN); }
+    sqlx::query("DELETE FROM community_members WHERE community_id = $1 AND user_id = $2")
+        .bind(community_id).bind(user_id).execute(&pool).await.map_err(|e| {
+            eprintln!("community leave failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+---- main.rs lines 4932-4944 ----
+async fn delete_community(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(community_id): Path<i32>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let result = sqlx::query("DELETE FROM communities WHERE id = $1 AND created_by = $2")
+        .bind(community_id).bind(user_id).execute(&pool).await.map_err(|e| {
+            eprintln!("community deletion failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if result.rows_affected() == 0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::NO_CONTENT)
+}
+---- main.rs lines 4946-4965 ----
+async fn update_community(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(community_id): Path<i32>,
+    Json(input): Json<NewCommunity>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let name = input.name.trim();
+    let description = input.description.as_deref().unwrap_or("").trim();
+    if !(3..=50).contains(&name.chars().count()) || description.chars().count() > 500 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let result = sqlx::query("UPDATE communities SET name = $1, description = $2 WHERE id = $3 AND created_by = $4")
+        .bind(name).bind(description).bind(community_id).bind(user_id).execute(&pool).await.map_err(|e| {
+            if e.as_database_error().is_some_and(|db| db.is_unique_violation()) { return StatusCode::CONFLICT; }
+            eprintln!("community update failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if result.rows_affected() == 0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::NO_CONTENT)
+}
+---- main.rs lines 4967-5025 ----
+async fn upload_community_image(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(community_id): Path<i32>,
+    mut multipart: Multipart,
+) -> Result<Json<AvatarInfo>, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let old: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT image_url FROM communities WHERE id = $1 AND created_by = $2",
+    )
+    .bind(community_id)
+    .bind(user_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("community image lookup failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let Some((old_url,)) = old else {
+        let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM communities WHERE id = $1)")
+            .bind(community_id)
+            .fetch_one(&pool)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        return Err(if exists { StatusCode::FORBIDDEN } else { StatusCode::NOT_FOUND });
+    };
+
+    let mut image: Option<(Vec<u8>, &'static str)> = None;
+    while let Some(field) = multipart.next_field().await.map_err(|_| StatusCode::BAD_REQUEST)? {
+        if field.name() == Some("image") {
+            let bytes = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+            if bytes.len() > 5 * 1024 * 1024 {
+                return Err(StatusCode::PAYLOAD_TOO_LARGE);
+            }
+            let ext = image_extension(&bytes).ok_or(StatusCode::UNSUPPORTED_MEDIA_TYPE)?;
+            image = Some((bytes.to_vec(), ext));
+        }
+    }
+    let (bytes, ext) = image.ok_or(StatusCode::BAD_REQUEST)?;
+    let url = save_image(&bytes, ext).await?;
+    let result = sqlx::query("UPDATE communities SET image_url = $1 WHERE id = $2 AND created_by = $3")
+        .bind(&url)
+        .bind(community_id)
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| {
+            eprintln!("community image update failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if result.rows_affected() == 0 {
+        remove_upload(&url).await;
+        return Err(StatusCode::FORBIDDEN);
+    }
+    if let Some(old_url) = old_url {
+        remove_upload(&old_url).await;
+    }
+    Ok(Json(AvatarInfo { avatar_url: url }))
+}
+---- main.rs lines 5027-5043 ----
+async fn list_community_members(
+    State(pool): State<PgPool>, headers: HeaderMap, Path(community_id): Path<i32>,
+) -> Result<Json<Vec<CommunityMember>>, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let is_member: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$2 AND is_enabled)")
+        .bind(community_id).bind(user_id).fetch_one(&pool).await.map_err(|e| {
+            eprintln!("community membership check failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if !is_member { return Err(StatusCode::FORBIDDEN); }
+    let members = sqlx::query_as::<_, CommunityMember>(
+        "SELECT u.id, u.username, COALESCE(u.id = c.created_by, FALSE) AS is_owner, cm.is_admin, cm.is_enabled AS enabled FROM community_members cm JOIN users u ON u.id=cm.user_id JOIN communities c ON c.id=cm.community_id WHERE cm.community_id=$1 ORDER BY is_owner DESC, cm.is_admin DESC, u.username",
+    ).bind(community_id).fetch_all(&pool).await.map_err(|e| {
+        eprintln!("community members lookup failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(members))
+}
+---- main.rs lines 5045-5065 ----
+async fn add_community_member(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(community_id): Path<i32>,
+    Json(input): Json<AddCommunityMember>,
+) -> Result<StatusCode, StatusCode> {
+    let owner_id = current_user_id(&pool, &headers).await?;
+    let can_manage: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM communities c WHERE c.id=$1 AND (c.created_by=$2 OR EXISTS(SELECT 1 FROM community_members m WHERE m.community_id=c.id AND m.user_id=$2 AND m.is_enabled AND m.is_admin)))")
+        .bind(community_id).bind(owner_id).fetch_one(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !can_manage { return Err(StatusCode::FORBIDDEN); }
+    let username = input.username.trim();
+    if username.is_empty() || username.chars().count() > 30 { return Err(StatusCode::BAD_REQUEST); }
+    let member_id: Option<i32> = sqlx::query_scalar("SELECT id FROM users WHERE lower(username)=lower($1) AND account_enabled")
+        .bind(username).fetch_optional(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let Some(member_id) = member_id else { return Err(StatusCode::NOT_FOUND); };
+    sqlx::query("INSERT INTO community_members (community_id,user_id,is_enabled) VALUES ($1,$2,TRUE) ON CONFLICT (community_id,user_id) DO UPDATE SET is_enabled=TRUE")
+        .bind(community_id).bind(member_id).execute(&pool).await.map_err(|e| {
+            eprintln!("community member add failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+---- main.rs lines 5067-5080 ----
+async fn set_community_member_status(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path((community_id, member_id)): Path<(i32, i32)>,
+    Json(input): Json<CommunityMemberStatus>,
+) -> Result<StatusCode, StatusCode> {
+    let owner_id = current_user_id(&pool, &headers).await?;
+    let result = sqlx::query("UPDATE community_members cm SET is_enabled=$1 FROM communities c WHERE cm.community_id=c.id AND cm.community_id=$2 AND cm.user_id=$3 AND cm.user_id<>c.created_by AND NOT cm.is_admin AND (c.created_by=$4 OR EXISTS(SELECT 1 FROM community_members actor WHERE actor.community_id=c.id AND actor.user_id=$4 AND actor.is_enabled AND actor.is_admin))")
+        .bind(input.enabled).bind(community_id).bind(member_id).bind(owner_id).execute(&pool).await.map_err(|e| {
+            eprintln!("community member status update failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if result.rows_affected() == 0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::NO_CONTENT)
+}
+---- main.rs lines 5082-5092 ----
+async fn remove_community_member(
+    State(pool): State<PgPool>, headers: HeaderMap, Path((community_id, member_id)): Path<(i32, i32)>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let result = sqlx::query("DELETE FROM community_members cm USING communities c WHERE cm.community_id=c.id AND cm.community_id=$1 AND cm.user_id=$2 AND cm.user_id<>c.created_by AND NOT cm.is_admin AND (c.created_by=$3 OR EXISTS(SELECT 1 FROM community_members actor WHERE actor.community_id=c.id AND actor.user_id=$3 AND actor.is_enabled AND actor.is_admin))")
+        .bind(community_id).bind(member_id).bind(user_id).execute(&pool).await.map_err(|e| {
+            eprintln!("community member removal failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if result.rows_affected() == 0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::NO_CONTENT)
+}
+---- main.rs lines 5094-5104 ----
+async fn set_community_member_admin(
+    State(pool): State<PgPool>, headers: HeaderMap, Path((community_id, member_id)): Path<(i32, i32)>, Json(input): Json<CommunityMemberAdmin>,
+) -> Result<StatusCode, StatusCode> {
+    let owner_id = current_user_id(&pool, &headers).await?;
+    let result = sqlx::query("UPDATE community_members cm SET is_admin=$1 FROM communities c WHERE cm.community_id=c.id AND cm.community_id=$2 AND cm.user_id=$3 AND cm.user_id<>c.created_by AND c.created_by=$4")
+        .bind(input.is_admin).bind(community_id).bind(member_id).bind(owner_id).execute(&pool).await.map_err(|e| {
+            eprintln!("community moderator role update failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if result.rows_affected()==0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::NO_CONTENT)
+}
+---- main.rs lines 5106-5124 ----
+async fn list_community_posts(
+    State(pool): State<PgPool>, headers: HeaderMap, Path(community_id): Path<i32>,
+) -> Result<Json<Vec<CommunityPost>>, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let member: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$2 AND is_enabled)")
+        .bind(community_id).bind(user_id).fetch_one(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !member { return Err(StatusCode::FORBIDDEN); }
+    let posts = sqlx::query_as::<_, CommunityPost>(
+        r#"SELECT p.id, u.username, u.avatar_url, p.title, p.body,
+                  to_char(p.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
+                  (SELECT COUNT(*) FROM community_comments cc WHERE cc.post_id=p.id) AS comment_count,
+                  (p.user_id=$2 OR c.created_by=$2 OR EXISTS(SELECT 1 FROM community_members mod WHERE mod.community_id=c.id AND mod.user_id=$2 AND mod.is_enabled AND mod.is_admin)) AS can_delete
+           FROM community_posts p JOIN users u ON u.id=p.user_id JOIN communities c ON c.id=p.community_id
+           WHERE p.community_id=$1 ORDER BY p.created_at DESC, p.id DESC LIMIT 200"#,
+    ).bind(community_id).bind(user_id).fetch_all(&pool).await.map_err(|e| {
+        eprintln!("community posts lookup failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(posts))
+}
+---- main.rs lines 5126-5136 ----
+async fn create_community_post(
+    State(pool): State<PgPool>, headers: HeaderMap, Path(community_id): Path<i32>, Json(input): Json<CommunityPostInput>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let title=input.title.trim(); let body=input.body.trim();
+    if title.is_empty() || title.chars().count()>120 || body.is_empty() || body.chars().count()>5000 { return Err(StatusCode::BAD_REQUEST); }
+    let result=sqlx::query("INSERT INTO community_posts(community_id,user_id,title,body) SELECT $1,$2,$3,$4 WHERE EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$2 AND is_enabled)")
+        .bind(community_id).bind(user_id).bind(title).bind(body).execute(&pool).await.map_err(|e| { eprintln!("community post create failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?;
+    if result.rows_affected()==0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::CREATED)
+}
+---- main.rs lines 5138-5146 ----
+async fn delete_community_post(
+    State(pool): State<PgPool>, headers: HeaderMap, Path((community_id, post_id)): Path<(i32, i64)>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id=current_user_id(&pool,&headers).await?;
+    let result=sqlx::query("DELETE FROM community_posts p USING communities c WHERE p.community_id=c.id AND p.community_id=$1 AND p.id=$2 AND (p.user_id=$3 OR c.created_by=$3 OR EXISTS(SELECT 1 FROM community_members mod WHERE mod.community_id=c.id AND mod.user_id=$3 AND mod.is_enabled AND mod.is_admin))")
+        .bind(community_id).bind(post_id).bind(user_id).execute(&pool).await.map_err(|e| { eprintln!("community post delete failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?;
+    if result.rows_affected()==0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::NO_CONTENT)
+}
+---- main.rs lines 5148-5162 ----
+async fn list_community_comments(
+    State(pool): State<PgPool>, headers: HeaderMap, Path((community_id, post_id)): Path<(i32, i64)>,
+) -> Result<Json<Vec<CommunityComment>>, StatusCode> {
+    let user_id=current_user_id(&pool,&headers).await?;
+    let member:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$2 AND is_enabled)")
+        .bind(community_id).bind(user_id).fetch_one(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !member { return Err(StatusCode::FORBIDDEN); }
+    let rows=sqlx::query_as::<_,CommunityComment>(
+        r#"SELECT cc.id,u.username,cc.body,to_char(cc.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
+                  (cc.user_id=$3 OR c.created_by=$3 OR EXISTS(SELECT 1 FROM community_members mod WHERE mod.community_id=c.id AND mod.user_id=$3 AND mod.is_enabled AND mod.is_admin)) AS can_delete
+           FROM community_comments cc JOIN users u ON u.id=cc.user_id JOIN communities c ON c.id=cc.community_id
+           WHERE cc.community_id=$1 AND cc.post_id=$2 ORDER BY cc.created_at,cc.id"#
+    ).bind(community_id).bind(post_id).bind(user_id).fetch_all(&pool).await.map_err(|e| { eprintln!("community comments lookup failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?;
+    Ok(Json(rows))
+}
+---- main.rs lines 5164-5173 ----
+async fn create_community_comment(
+    State(pool): State<PgPool>, headers: HeaderMap, Path((community_id, post_id)): Path<(i32, i64)>, Json(input): Json<CommunityCommentInput>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id=current_user_id(&pool,&headers).await?;
+    let body=input.body.trim(); if body.is_empty() || body.chars().count()>2000 { return Err(StatusCode::BAD_REQUEST); }
+    let result=sqlx::query("INSERT INTO community_comments(community_id,post_id,user_id,body) SELECT $1,$2,$3,$4 WHERE EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$3 AND is_enabled) AND EXISTS(SELECT 1 FROM community_posts WHERE id=$2 AND community_id=$1)")
+        .bind(community_id).bind(post_id).bind(user_id).bind(body).execute(&pool).await.map_err(|e| { eprintln!("community comment create failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?;
+    if result.rows_affected()==0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::CREATED)
+}
+---- main.rs lines 5175-5183 ----
+async fn delete_community_comment(
+    State(pool): State<PgPool>, headers: HeaderMap, Path((community_id, post_id, comment_id)): Path<(i32, i64, i64)>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id=current_user_id(&pool,&headers).await?;
+    let result=sqlx::query("DELETE FROM community_comments cc USING communities c WHERE cc.community_id=c.id AND cc.community_id=$1 AND cc.post_id=$2 AND cc.id=$3 AND (cc.user_id=$4 OR c.created_by=$4 OR EXISTS(SELECT 1 FROM community_members mod WHERE mod.community_id=c.id AND mod.user_id=$4 AND mod.is_enabled AND mod.is_admin))")
+        .bind(community_id).bind(post_id).bind(comment_id).bind(user_id).execute(&pool).await.map_err(|e| { eprintln!("community comment delete failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?;
+    if result.rows_affected()==0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::NO_CONTENT)
+}
+==== index.html: community page code ====
+lines 1 to 901
+1: <!DOCTYPE html>
+2: <html>
+3: <head>
+4:   <meta charset="utf-8">
+5:   <meta name="viewport" content="width=device-width, initial-scale=1">
+6:   <title>Community â€” local roots, global connections</title>
+7:   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+8:   <style>
+9:     :root {
+10:       color-scheme: light;
+11:       --ink: #201c2e;
+12:       --muted: #737b78;
+13:       --violet: #347e72;
+14:       --line: #e3e7df;
+15:       --paper: #f5f6f0;
+16:       --serif: Georgia, "Times New Roman", serif;
+17:     }
+18:     [hidden] { display: none !important; }
+19:     * { box-sizing: border-box; }
+20:     body { margin: 0; color: var(--ink); background: radial-gradient(ellipse at 8% 5%, #edf4eb 0, transparent 34%), radial-gradient(ellipse at 94% 28%, #f4ede2 0, transparent 29%), var(--paper); font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+21:     header { min-height: 76px; padding: 0 max(28px, calc((100vw - 1240px) / 2)); display: flex; justify-content: space-between; align-items: center; gap: 24px; background: rgba(248,248,243,.92); border-bottom: 1px solid rgba(227,231,223,.9); position: sticky; top: 0; z-index: 5; backdrop-filter: blur(18px); }
+22:     .logo { display: inline-flex; align-items: center; gap: 10px; font-size: 21px; font-weight: 750; letter-spacing: -.8px; color: var(--ink); text-decoration: none; }
+23:     .logo-mark { width: 31px; height: 31px; border-radius: 11px; display: grid; place-items: center; color: white; font-size: 17px; background: linear-gradient(140deg, #f1a77c, #53a68d 58%, #457a9c); box-shadow: 0 5px 14px #347e7245; }
+24:     .top-nav { display: flex; gap: 30px; align-items: center; margin-left: auto; }
+25:     .top-nav a { color: #686578; text-decoration: none; font-size: 13px; font-weight: 600; transition: color .2s ease; }
+26:     .top-nav a:hover { color: var(--violet); }
+27:     #auth { display: flex; gap: 7px; align-items: center; font-size: 13px; }
+28:     #auth input { min-width: 105px; width: 130px; padding: 9px 11px; color: var(--ink); background: white; border: 1px solid var(--line); border-radius: 11px; outline: none; }
+29:     #auth .signup-link { display: inline-flex; align-items: center; padding: 9px 14px; border: 1px solid var(--line); border-radius: 11px; color: var(--ink); background: white; font-weight: 650; text-decoration: none; }
+30:     #signupView { max-width: 620px; margin: 42px auto; padding: 0 18px 56px; }
+31:     .signup-card { padding: 24px; border: 1px solid var(--line); border-radius: 18px; background: white; box-shadow: 0 12px 32px #34235d0b; }
+32:     .signup-card h1 { margin: 0; font-family: var(--serif); font-size: 29px; font-weight: 500; }
+33:     .signup-card > p { margin: 8px 0 20px; color: var(--muted); font-size: 12px; }
+34:     .signup-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+35:     .signup-field { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
+36:     .signup-field.full { grid-column: 1 / -1; }
+37:     .signup-field input, .signup-field textarea { width: 100%; min-width: 0; padding: 10px 11px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); font: inherit; font-size: 13px; }
+38:     .signup-field textarea { min-height: 70px; resize: vertical; }
+39:     .signup-submit { grid-column: 1 / -1; color: white; background: var(--violet); border-color: var(--violet); }
+40:     .signup-message { grid-column: 1 / -1; min-height: 1em; margin: 0; color: #a33; font-size: 12px; }
+41:     .signup-back { display: inline-block; margin-bottom: 14px; color: var(--muted); font-size: 12px; text-decoration: none; }
+42:     @media (max-width: 560px) { .signup-form { grid-template-columns: 1fr; } .signup-field.full, .signup-submit, .signup-message { grid-column: auto; } .signup-card { padding: 18px; } }
+43:     input:focus, textarea:focus, select:focus { border-color: #a58af3 !important; box-shadow: 0 0 0 3px #7655e81a; }
+44:     button { padding: 9px 14px; color: var(--ink); background: white; border: 1px solid var(--line); border-radius: 11px; cursor: pointer; font: inherit; font-weight: 650; transition: transform .2s ease, box-shadow .2s ease, background .2s ease; }
+45:     button:hover { transform: translateY(-1px); box-shadow: 0 5px 15px #34235d12; }
+46:     #auth button:last-of-type { color: white; background: var(--ink); border-color: var(--ink); }
+47:     #msg { color: #c0445b; font-size: 12px; }
+48:     .ulink { color: inherit; text-decoration: none; font-weight: 650; }
+49:     .ulink:hover { color: var(--violet); }
+50:     .avatar { width: 34px; height: 34px; border-radius: 50%; background: #ded9ea; flex: none; object-fit: cover; display: block; }
+51:     .avatar.big { width: 96px; height: 96px; }
+52:     #homeView { min-height: calc(100vh - 76px); padding: 34px 28px 76px; overflow: hidden; }
+53:     .home-shell { max-width: 1190px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 350px); align-items: start; gap: 28px; }
+54:     .home-main { grid-column: 1; grid-row: 1; min-width: 0; }
+55:     .home-aside { grid-column: 2; grid-row: 1; min-width: 0; }
+56:     .hero { min-height: 278px; position: relative; isolation: isolate; overflow: hidden; display: flex; align-items: center; margin-bottom: 34px; padding: 35px 42px; border: 1px solid #eee8fa; border-radius: 27px; background: linear-gradient(112deg, #f3efff 0%, #f8f3ff 42%, #fff3ed 100%); }
+57:     .hero::before, .hero::after { content: ""; position: absolute; z-index: -1; border-radius: 50%; pointer-events: none; }
+58:     .hero::before { width: 310px; height: 310px; right: 16%; top: -225px; background: #e7dafa; filter: blur(2px); }
+59:     .hero::after { width: 240px; height: 240px; right: -100px; bottom: -155px; background: #ffd9cd; }
+60:     .hero-cover { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+61:     .hero.has-cover { background: #28233b; border-color: #28233b; }
+62:     .hero.has-cover::before { inset: 0; z-index: 1; width: auto; height: auto; border-radius: 0; background: linear-gradient(90deg, #201c2ee8 0%, #201c2eae 48%, #201c2e38 100%); filter: none; }
+63:     .hero.has-cover::after { display: none; }
+64:     .hero.has-cover .eyebrow, .hero.has-cover h1, .hero.has-cover .hero-copy p { color: white; }
+65:     .hero.has-cover h1 em { color: #e2d6ff; }
+66:     .active-users { display: flex; align-items: center; width: 100%; margin: -18px 0 24px; padding: 4px 2px 10px; overflow-x: auto; scrollbar-color: #b7c9bb transparent; scrollbar-width: thin; }
+67:     .active-users-list { display: flex; width: max-content; min-width: 100%; flex: 0 0 auto; gap: 13px; overflow: visible; padding: 2px 2px 8px; }
+68:     .active-user { display: grid; justify-items: center; gap: 6px; width: 56px; flex: 0 0 56px; color: var(--ink); text-decoration: none; }
+69:     .active-user-avatar { position: relative; }
+70:     .active-user-avatar .avatar { width: 48px; height: 48px; border: 2px solid white; box-shadow: 0 0 0 2px #78a98c; }
+71:     .avatar-with-mood { position: relative; width: max-content; flex: none; }
+72:     .mood-badge { position: absolute; right: -3px; bottom: -3px; display: grid; width: 24px; height: 24px; place-items: center; border: 2px solid white; border-radius: 50%; background: #f4edff; box-shadow: 0 2px 7px #201c2e26; font-size: 14px; line-height: 1; }
+73:     .mood-badge.profile-mood-badge { right: 0; bottom: 0; width: 30px; height: 30px; font-size: 17px; }
+74:     .active-user-name { width: 100%; overflow: hidden; color: #625e70; font-size: 10px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+75:     .active-users-empty { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+76:     .hero-cover-actions { position: absolute; z-index: 3; top: 14px; right: 15px; display: grid; justify-items: end; gap: 8px; max-width: min(460px, calc(100% - 30px)); }
+77:     .hero-copy { position: relative; z-index: 2; }
+78:     .hero-cover-actions[hidden] { display: none; }
+79:     .hero-cover-buttons { display: flex; align-items: center; gap: 7px; }
+80:     .hero-cover-actions button { padding: 7px 10px; border-color: #ffffffa8; background: #ffffffdf; color: #302b40; font-size: 10px; }
+81:     .hero-cover-actions .cover-remove { color: #7d3e4c; }
+82:     .hero-cover-feedback { color: var(--muted); font-size: 10px; }
+83:     .hero.has-cover .hero-cover-feedback { color: white; text-shadow: 0 1px 5px #0008; }
+84:     .cover-editor { display: flex; flex-wrap: wrap; align-items: center; gap: 15px; width: 100%; padding: 10px 12px; border: 1px solid #ffffffb3; border-radius: 12px; background: #ffffffde; box-shadow: 0 8px 24px #26213b1a; }
+85:     .cover-editor .cover-save-close { width: auto; min-height: 29px; flex: none; padding-inline: 10px; color: white; background: var(--violet); border-color: var(--violet); font-size: 10px; white-space: nowrap; }
+86:     .cover-editor[hidden] { display: none; }
+87:     .cover-direction-controls { display: grid; grid-template-columns: repeat(3, 32px); grid-template-rows: repeat(3, 29px); gap: 2px; }
+88:     .cover-editor button { display: grid; width: 32px; min-height: 29px; place-items: center; padding: 0; border-radius: 7px; font-size: 16px; line-height: 1; }
+89:     .cover-editor button:hover { background: #f0ebff; }
+90:     .cover-move-up { grid-column: 2; grid-row: 1; }
+91:     .cover-move-left { grid-column: 1; grid-row: 2; }
+92:     .cover-move-right { grid-column: 3; grid-row: 2; }
+93:     .cover-move-down { grid-column: 2; grid-row: 3; }
+94:     .cover-zoom-controls { display: flex; align-items: center; gap: 8px; }
+95:     .cover-zoom-value { min-width: 42px; color: #514d60; font-size: 11px; text-align: center; }
+96:     .cover-editor-hint { flex: 1; color: var(--muted); font-size: 10px; }
+97:     .admin-link { color: #7655e8; }
+98:     #friendsView, #communityView { max-width: 1050px; margin: 32px auto; padding: 0 22px 56px; }
+99:     .social-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 18px; }
+100:     .social-heading h1 { margin: 0; font-family: var(--serif); font-weight: 500; }
+101:     .social-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(235px, 1fr)); gap: 12px; }
+102:     .social-card, .community-post { padding: 15px; border: 1px solid var(--line); border-radius: 15px; background: white; box-shadow: 0 8px 24px #34235d08; }
+103:     .social-person { display: flex; align-items: center; gap: 10px; }
+104:     .social-person .avatar { width: 44px; height: 44px; }
+105:     .social-card-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+106:     .social-card-actions button, .community-toolbar button, .community-post button { padding: 7px 11px; font-size: 11px; }
+107:     .community-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 15px 0; }
+108:     .community-form { display: grid; gap: 9px; padding: 14px; margin: 12px 0; border: 1px solid var(--line); border-radius: 14px; background: white; }
+109:     .community-form input, .community-form textarea { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid var(--line); border-radius: 9px; font: inherit; }
+110:     .community-form textarea { min-height: 92px; resize: vertical; }
+111:     .community-toolbar { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0; }
+112:     .community-posts { display: grid; gap: 12px; margin-top: 14px; }
+113:     .community-post h3 { margin: 0 0 7px; }
+114:     .community-post p { white-space: pre-wrap; overflow-wrap: anywhere; }
+115:     .community-meta, .community-note { color: var(--muted); font-size: 11px; }
+116:     .community-comments { display: grid; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+117:     .community-comment { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+118:     #communityView { max-width: 1320px; margin: 24px auto; }
+119:     .community-workspace { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 20px; align-items: start; }
+120:     .community-sidebar { position: sticky; top: 18px; display: grid; gap: 14px; padding: 16px; border: 1px solid var(--line); border-radius: 18px; background: #fff; box-shadow: 0 12px 32px #34235d0b; }
+121:     .community-sidebar-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+122:     .community-sidebar-head h2, .community-sidebar-section h3 { margin: 0; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+123:     .community-sidebar-section { display: grid; gap: 6px; }
+124:     .community-side-list { display: grid; gap: 4px; }
+125:     .community-side-item { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; padding: 9px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--ink); text-align: left; }
+126:     .community-side-item:hover, .community-side-item.active { border-color: #ded7f3; background: #f4f1fb; }
+127:     .community-side-item img, .community-side-mark { display: grid; width: 38px; height: 38px; flex: none; place-items: center; border-radius: 12px; object-fit: cover; background: linear-gradient(135deg,#e4d8fb,#cfe9dd); color: #453679; font-weight: 800; }
+128:     .community-side-copy { min-width: 0; }
+129:     .community-side-copy strong, .community-side-copy span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+130:     .community-side-copy strong { font-size: 12px; }
+131:     .community-side-copy span { margin-top: 3px; color: var(--muted); font-size: 10px; }
+132:     .community-main { min-width: 0; }
+133:     .community-main-empty { display: grid; min-height: 380px; place-content: center; padding: 30px; border: 1px dashed #d8d2e6; border-radius: 20px; background: #fff; text-align: center; }
+134:     .community-banner { position: relative; display: flex; min-height: 245px; align-items: end; overflow: hidden; padding: 24px; border: 1px solid #dcd8e5; border-radius: 22px; background: linear-gradient(125deg,#6554a7,#a58cd9 52%,#d9cafa); color: white; box-shadow: 0 14px 34px #34235d18; }
+135:     .community-banner-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+136:     .community-banner::after { position: absolute; inset: 0; background: linear-gradient(90deg,#171222c9 0%,#17122255 70%,#17122210),linear-gradient(0deg,#1712227a,transparent 70%); content: ''; }
+137:     .community-banner-content { position: relative; z-index: 1; display: flex; width: 100%; align-items: end; justify-content: space-between; gap: 18px; }
+138:     .community-banner-copy { max-width: 680px; }
+139:     .community-banner h1 { margin: 0; font-family: var(--serif); font-size: clamp(28px,4vw,42px); font-weight: 600; letter-spacing: -.04em; }
+140:     .community-banner p { margin: 8px 0 0; color: #fffE; font-size: 13px; line-height: 1.55; }
+141:     .community-banner-meta { margin-top: 10px; color: #ffffffc9; font-size: 11px; }
+142:     .community-banner-actions { display: flex; flex-wrap: wrap; justify-content: end; gap: 7px; }
+143:     .community-banner-actions button { border-color: #ffffff85; background: #ffffffea; color: #312847; }
+144:     .community-banner-actions .community-join-button { border-color: #fff; background: #fff; color: #433188; font-weight: 750; }
+145:     .community-tabs { display: flex; gap: 5px; margin: 12px 0 16px; overflow-x: auto; border-bottom: 1px solid var(--line); }
+146:     .community-tab { flex: none; padding: 12px 16px; border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: transparent; color: var(--muted); font-weight: 650; }
+147:     .community-tab.active { border-bottom-color: #5c5ddb; color: #4c4fca; }
+148:     .community-about-card, .community-composer { padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: #fff; box-shadow: 0 8px 24px #34235d08; }
+149:     .community-about-card h2, .community-composer h2 { margin: 0 0 9px; font-family: var(--serif); font-size: 20px; }
+150:     .community-composer { margin: 14px 0; }
+151:     .community-composer .community-form { margin: 0; padding: 0; border: 0; box-shadow: none; }
+152:     .community-post { overflow: hidden; padding: 0; }
+153:     .community-post-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px 5px; }
+154:     .community-post-head .avatar { width: 38px; height: 38px; }
+155:     .community-post-author { display: grid; gap: 3px; }
+156:     .community-post-author a { color: var(--ink); font-weight: 700; text-decoration: none; }
+157:     .community-post-content { padding: 4px 16px 2px; }
+158:     .community-post-content h3 { margin: 5px 0 7px; font-size: 17px; }
+159:     .community-post-content p { margin: 0 0 12px; color: #4e4a5b; line-height: 1.65; }
+160:     .community-post-actions { display: flex; align-items: center; gap: 8px; padding: 9px 16px 13px; border-top: 1px solid #f0eef4; }
+161:     .community-post-actions button { background: transparent; color: #585467; border-color: transparent; }
+162:     .community-discussion-form { display: grid; gap: 9px; }
+163:     .community-discussion-form input, .community-discussion-form textarea { width: 100%; box-sizing: border-box; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; font: inherit; }
+164:     .community-discussion-form textarea { min-height: 90px; resize: vertical; }
+165:     .community-create-image { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
+166:     .community-member-list { display: grid; gap: 8px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+167:     .community-member-row { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; padding: 7px; border-bottom: 1px solid #f0eef4; }
+168:     .community-member-row:last-child { border-bottom: 0; }
+169:     .rich-editor-wrap { border: 1px solid var(--line); border-radius: 12px; background: #fff; overflow: hidden; }
+170:     .rich-editor-toolbar { display: flex; flex-wrap: wrap; gap: 4px; padding: 7px; border-bottom: 1px solid var(--line); background: #faf9fc; }
+171:     .rich-editor-toolbar button { width: 34px; min-height: 32px; padding: 5px; font-weight: 700; }
+172:     .rich-editor { min-height: 110px; padding: 12px; outline: none; line-height: 1.6; }
+173:     .rich-editor:empty::before { color: #9994a4; content: attr(data-placeholder); }
+174:     .rich-editor:focus { box-shadow: inset 0 0 0 2px #8b76d833; }
+175:     .bio-rich { color: #494557; font-size: 15px; line-height: 1.8; overflow-wrap: anywhere; }
+176:     .bio-rich p { margin: 0 0 8px; }
+177:     .bio-rich ul, .bio-rich ol { padding-left: 22px; }
+178:     .bio-rich blockquote { margin: 8px 0; padding: 4px 12px; border-left: 3px solid #8c79d2; color: #605875; }
+179:     #profileView { max-width: 1000px; margin: 24px auto; }
+180:     .profile-hero { overflow: hidden; margin: 18px 0 15px; border: 1px solid #e3e0e9; border-radius: 22px; background: white; box-shadow: 0 14px 34px #34235d10; }
+181:     .profile-cover { position: relative; height: clamp(140px,22vw,235px); overflow: hidden; background: radial-gradient(circle at 80% 16%,#e0c5ff,transparent 28%),linear-gradient(125deg,#302849,#6d5aaa 55%,#96b6a7); }
+182:     .profile-cover img { width: 100%; height: 100%; object-fit: cover; }
+183:     .profile-cover::after { position: absolute; inset: 0; background: linear-gradient(0deg,#17122266,transparent 58%); content: ''; }
+184:     .profile-hero-body { position: relative; display: flex; align-items: end; gap: 18px; padding: 0 24px 18px; }
+185:     .profile-hero-body .avatar-with-mood { position: relative; flex: none; margin-top: -45px; }
+186:     .profile-hero-body .avatar-with-mood > .avatar { width: 112px; height: 112px; border: 5px solid white; box-shadow: 0 8px 20px #18152530; }
+187:     .profile-hero-body .phead { flex: 1; min-width: 0; margin: 0; }
+188:     .profile-hero-body .phead > div:last-child { display: grid; gap: 9px; }
+189:     .profile-hero-body .pname { color: #272334; font-size: clamp(25px,3vw,34px); font-weight: 650; }
+190:     .profile-hero-body .psub { font-size: 13px; }
+191:     .profile-hero-body .profile-username-line { flex-wrap: wrap; }
+192:     .profile-hero-body .row { margin-top: 2px; }
+193:     .profile-hero-body button { min-height: 35px; }
+194:     .profile-hero-body .profile-follow-button { border-radius: 999px; padding-inline: 16px; }
+195:     #profileView > .stats { gap: 0; justify-content: space-around; margin: 0 0 16px; padding: 13px; border: 1px solid var(--line); border-radius: 15px; background: white; }
+196:     #profileView > .stats > * { flex: 1; padding: 8px 12px; text-align: center; }
+197:     #profileView > .stats > * + * { border-left: 1px solid var(--line); }
+198:     #profileView .connections-panel, #profileView .profile-contact, #profileView .profile-about-card, #profileView .dashboard-card, #profileView #profileRequests { border-radius: 16px; box-shadow: 0 8px 26px #34235d08; }
+199:     #profileView .profile-about-card { margin: 14px 0; padding: 18px 20px; border: 1px solid var(--line); background: white; }
+200:     #profileView .profile-about-card h2, #profileView .profile-contact h2 { margin: 0 0 8px; font-family: var(--serif); font-size: 19px; font-weight: 600; }
+201:     #profileView .profile-info-card { display: grid; gap: 10px; }
+202:     #profileView .profile-info-section { display: grid; gap: 10px; }
+203:     #profileView .profile-info-contact { grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 9px; margin: 0; padding: 13px 0 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; }
+204:     #profileView .profile-info-contact h3 { grid-column: 1 / -1; margin: 0 0 2px; font-family: var(--serif); font-size: 16px; font-weight: 600; }
+205:     #profileView .details { gap: 8px; }
+206:     #profileView .details span { display: inline-flex; align-items: center; gap: 6px; padding: 8px 11px; border: 1px solid #ebe8f2; border-radius: 999px; background: #faf9fc; }
+207:     #profileView .profile-contact { grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 9px; padding: 18px 20px; }
+208:     #profileView .profile-contact h2 { grid-column: 1 / -1; }
+209:     #profileView .profile-contact > :not(h2) { padding: 9px 11px; border-radius: 10px; background: #faf9fc; }
+210:     #profileView .profile-gallery { margin-top: 22px; padding: 18px; border: 1px solid var(--line); border-radius: 18px; background: white; }
+211:     #adminView { max-width: 1220px; margin: 32px auto; padding: 0 24px 56px; }
+212:     .app-paused-view { max-width: 760px; margin: 15vh auto; padding: 0 22px; text-align: center; }
+213:     .app-paused-view h1 { margin-top: 0; font-family: var(--serif); font-weight: 500; }
+214:     .admin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 12px; margin: 18px 0 24px; }
+215:     .admin-stat, .admin-panel { padding: 16px; border: 1px solid var(--line); border-radius: 15px; background: white; box-shadow: 0 8px 24px #34235d08; }
+216:     button.admin-stat { width: 100%; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: border-color .2s, transform .2s, box-shadow .2s; }
+217:     button.admin-stat:hover, button.admin-stat:focus-visible { border-color: #c9b9f1; box-shadow: 0 8px 24px #34235d12; transform: translateY(-2px); outline: none; }
+218:     .admin-stat strong { display: block; font-size: 24px; }
+219:     .admin-stat span, .admin-muted { color: var(--muted); font-size: 11px; }
+220:     .admin-panel { margin: 14px 0; overflow-x: auto; }
+221:     .admin-panel h2 { margin: 0 0 12px; font-size: 17px; }
+222:     .admin-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+223:     .admin-table th, .admin-table td { padding: 9px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+224:     .admin-table th { color: var(--muted); font-weight: 650; white-space: nowrap; }
+225:     .chat-media-picker { padding: 10px 14px; border-top: 1px solid var(--line); background: #fff; }
+226:     .chat-media-picker[hidden] { display: none; }
+227:     .chat-media-picker-head { display: flex; gap: 8px; margin-bottom: 8px; }
+228:     .chat-media-picker-head input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; font: inherit; font-size: 12px; }
+229:     .chat-media-results { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; max-height: 240px; overflow: auto; }
+230:     .chat-media-tile { min-width: 0; }
+231:     .chat-media-results button { width: 100%; min-width: 0; padding: 3px; background: white; }
+232:     .chat-media-results img { display: block; width: 100%; height: 76px; object-fit: cover; border-radius: 7px; }
+233:     .chat-media-credit { display: block; overflow: hidden; color: var(--muted); font-size: 9px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+234:     .chat-media-status { margin: 4px 0; color: var(--muted); font-size: 10px; }
+235:     .map-section { overflow: hidden; border: 1px solid var(--line); border-radius: 19px; background: white; box-shadow: 0 10px 30px #34235d08; }
+236:     .map-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 17px 20px 12px; }
+237:     .map-heading h2 { margin: 0; font-family: var(--serif); font-size: 23px; font-weight: 500; }
+238:     .map-heading p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+239:     .map-live-controls { display: flex; align-items: center; gap: 10px; }
+240:     .map-live-toggle { color: white; background: var(--violet); border-color: var(--violet); font-size: 11px; }
+241:     .map-live-toggle:disabled { opacity: .6; cursor: wait; }
+242:     .map-live-status { max-width: 190px; color: var(--muted); font-size: 10px; }
+243:     .map-privacy-note { margin: 0; padding: 8px 20px; color: #625e70; background: #f7f6fb; font-size: 10px; line-height: 1.5; }
+244:     .map-category-filters { display: flex; gap: 7px; overflow-x: auto; padding: 11px 18px; scrollbar-width: thin; }
+245:     .map-category-filter { flex: none; padding: 7px 11px; border-radius: 999px; color: #625e70; background: #f8f6fc; font-size: 10px; }
+246:     .map-category-filter[aria-pressed="true"] { color: white; background: var(--violet); border-color: var(--violet); }
+247:     #checkinMap { width: 100%; height: 420px; background: #e9eee8; z-index: 0; }
+248:     .map-unavailable { padding: 22px; color: #a33; font-size: 12px; }
+249:     .map-checkin-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; padding: 14px 18px; border-top: 1px solid var(--line); background: #fcfbfe; }
+250:     .map-checkin-form[hidden] { display: none; }
+251:     .map-checkin-form strong, .map-checkin-feedback, .map-checkin-coordinates { grid-column: 1 / -1; }
+252:     .map-checkin-form label { display: grid; gap: 4px; color: #625e70; font-size: 10px; }
+253:     .map-checkin-form input, .map-checkin-form select, .map-checkin-form textarea { width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 11px; }
+254:     .map-checkin-form textarea { min-height: 38px; resize: vertical; }
+255:     .map-checkin-form button { color: white; background: var(--violet); border-color: var(--violet); font-size: 11px; }
+256:     .map-checkin-coordinates { margin: 0; color: var(--muted); font-size: 10px; }
+257:     .map-checkin-feedback { min-height: 1em; color: #39766c; font-size: 10px; }
+258:     .map-attribution { padding: 6px 18px; color: var(--muted); font-size: 9px; }
+259:     .map-attribution a { color: inherit; }
+260:     .map-checkin-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 9px; padding: 12px 18px; }
+261:     .map-pin { display: grid; width: 30px; height: 30px; place-items: center; border: 2px solid white; border-radius: 50% 50% 50% 0; background: #347e72; color: white; box-shadow: 0 2px 8px #201c2e55; font-size: 14px; transform: rotate(-45deg); }
+262:     .map-pin span { transform: rotate(45deg); }
+263:     .map-live-pin { display: grid; width: 38px; height: 38px; place-items: center; border: 3px solid white; border-radius: 50%; background: #6a54c6; color: white; box-shadow: 0 2px 10px #201c2e66; font-size: 12px; font-weight: 700; }
+264:     .map-popup { display: grid; gap: 4px; min-width: 120px; font-size: 11px; }
+265:     .map-popup a { color: var(--violet); font-weight: 700; text-decoration: none; }
+266:     .map-checkin-form label:nth-of-type(3) { grid-column: span 2; }
+267:     .map-checkin-submit { align-self: end; }
+268:     @media (max-width: 700px) { .map-heading { align-items: flex-start; flex-direction: column; } .map-live-controls { width: 100%; flex-wrap: wrap; } #checkinMap { height: 360px; } .map-checkin-form { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+269:     @media (max-width: 560px) { .hero-cover-actions { top: 10px; right: 10px; max-width: calc(100% - 20px); } .cover-editor { gap: 8px; padding: 7px; } .cover-direction-controls { grid-template-columns: repeat(3, 27px); grid-template-rows: repeat(3, 26px); } .cover-editor button { width: 27px; min-height: 26px; } .cover-editor-hint { display: none; } }
+270:     .section-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 15px; }
+271:     .section-title { margin: 0; font-family: var(--serif); font-size: 27px; font-weight: 500; letter-spacing: -.5px; }
+272:     .section-kicker { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+273:     #tabs { display: flex; gap: 6px; align-items: center; }
+274:     #tabs:empty { display: none; }
+275:     #tabs .tab { padding: 7px 12px; border-radius: 999px; color: #716d7e; background: transparent; border-color: transparent; font-size: 11px; }
+276:     #tabs .tab.active { color: white; background: #29243d; border-color: #29243d; }
+277:     #composer { display: flex; flex-direction: column; gap: 10px; margin: 0 0 18px; padding: 17px; background: white; border: 1px solid var(--line); border-radius: 17px; box-shadow: 0 8px 30px #34235d08; }
+278:     #composer:empty { display: none; }
+279:     #composer input[type=text] { width: 100%; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; font: inherit; }
+280:     #composer button { align-self: flex-start; padding-inline: 18px; color: white; background: var(--violet); border-color: var(--violet); }
+281:     #composer input[type=file] { max-width: 100%; color: var(--muted); font: inherit; font-size: 12px; }
+282:     #feed { width: 100%; }
+283:     .empty { color: var(--muted); text-align: center; padding: 35px 20px; background: white; border: 1px solid var(--line); border-radius: 18px; }
+284:     .card { overflow: hidden; margin-bottom: 22px; background: white; border: 1px solid var(--line); border-radius: 19px; box-shadow: 0 10px 28px #34235d09; }
+285:     .user { display: flex; align-items: center; gap: 10px; padding: 14px 17px; }
+286:     .post-author { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+287:     .post-author-mood { flex: none; font-size: 16px; line-height: 1; }
+288:     .post-user-controls { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+289:     .post-follow-button { padding: 6px 10px; color: white; background: var(--violet); border-color: var(--violet); font-size: 11px; }
+290:     .post-follow-status { color: #a33; font-size: 10px; }
+291:     .post-user-actions { position: relative; }
+292:     .post-user-actions summary { padding: 5px 9px; color: #625e70; border: 1px solid var(--line); border-radius: 9px; cursor: pointer; font-size: 11px; list-style: none; }
+293:     .post-user-actions summary::-webkit-details-marker { display: none; }
+294:     .post-user-menu { position: absolute; z-index: 3; top: calc(100% + 6px); right: 0; display: grid; gap: 4px; width: 210px; padding: 7px; border: 1px solid var(--line); border-radius: 11px; background: white; box-shadow: 0 8px 24px #26213b1a; }
+295:     .post-user-menu[hidden] { display: none; }
+296:     .post-user-menu button { width: 100%; padding: 8px; border: 0; border-radius: 7px; background: transparent; text-align: left; font-size: 11px; }
+297:     .post-user-menu button:hover { background: #f5f7f2; }
+298:     .report-form { display: grid; gap: 7px; padding: 8px 4px 3px; border-top: 1px solid var(--line); }
+299:     .report-form label { color: var(--muted); font-size: 10px; }
+300:     .report-form select, .report-form textarea { width: 100%; padding: 7px; border: 1px solid var(--line); border-radius: 7px; font: inherit; font-size: 11px; }
+301:     .report-form textarea { min-height: 58px; resize: vertical; }
+302:     .report-status { margin: 0; color: #39766c; font-size: 10px; line-height: 1.4; }
+303:     .media-stage { position: relative; z-index: 1; background: #17151d; }
+304:     .card img.photo { width: 100%; max-height: 620px; display: block; object-fit: cover; background: #f0edf5; }
+305:     .card video.photo { width: 100%; max-height: 620px; display: block; object-fit: contain; background: #17151d; }
+306:     .media-reactions { position: absolute; z-index: 2; top: 50%; right: 14px; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 6px; transform: translateY(-50%); border: 1px solid #ffffff55; border-radius: 999px; background: #201c2ed9; box-shadow: 0 5px 18px #0005; backdrop-filter: blur(8px); }
+307:     .media-reactions button { display: inline-flex; width: 38px; height: 38px; flex: 0 0 38px; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%; background: transparent; color: white; cursor: pointer; touch-action: manipulation; }
+308:     .media-reactions button:hover { transform: scale(1.08); box-shadow: none; background: #ffffff24; }
+309:     .media-reactions .like { font-size: 25px; line-height: 1; }
+310:     .media-reactions .dislike svg { display: block; width: 20px; height: 20px; flex: none; fill: currentColor; transform: rotate(180deg); transform-origin: center; }
+311:     .media-reactions .dislike.selected { color: #c7aaff; background: #ffffff1f; }
+312:     .media-reactions .hate { font-size: 10px; font-weight: 750; }
+313:     .media-reactions .hate.selected { color: #ff9baa; background: #ffffff1f; }
+314:     .actions { min-height: 38px; padding: 9px 16px 0; display: flex; align-items: center; gap: 9px; }
+315:     .actions .reshare { padding: 5px 9px; color: #39766c; background: #edf5ee; border-color: #d7e6d8; font-size: 11px; }
+316:     .actions .reshare:disabled { opacity: .7; cursor: default; }
+317:     .vote-count { color: var(--muted); font-size: 10px; }
+318:     .actions .hint { margin-left: auto; }
+319:     .hint { color: #c0445b; font-size: 12px; }
+320:     .meta { padding: 7px 17px 12px; font-size: 13px; line-height: 1.6; }
+321:     .post-tags { color: var(--muted); font-size: 11px; }
+322:     .linkbtn { padding: 0 17px 14px; color: var(--muted); background: none; border: none; font-size: 12px; text-align: left; }
+323:     .comments { padding: 0 17px 16px; color: #5f5b6c; font-size: 13px; }
+324:     .comments .row { margin-bottom: 6px; overflow-wrap: anywhere; }
+325:     .comments .newcomment { display: flex; gap: 6px; margin-top: 8px; }
+326:     .comments .newcomment input { flex: 1; min-width: 0; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; }
+327:     .side-panel { margin-top: 12px; padding: 20px; background: white; border: 1px solid var(--line); border-radius: 19px; box-shadow: 0 10px 30px #34235d08; }
+328:     .side-label { margin: 0 0 12px; color: #827d91; font-size: 9px; letter-spacing: 1.7px; font-weight: 750; text-transform: uppercase; }
+329:     .side-panel h2 { margin: 0; font-family: var(--serif); font-size: 23px; font-weight: 500; letter-spacing: -.4px; line-height: 1.12; }
+330:     .side-panel p { margin: 9px 0 0; color: var(--muted); font-size: 11px; line-height: 1.7; }
+331:     .idea-list { display: grid; gap: 8px; margin-top: 17px; }
+332:     .checkin-audience { display: flex; gap: 5px; margin-top: 14px; }
+333:     .checkin-audience[hidden] { display: none; }
+334:     .checkin-audience button { flex: 1; padding: 7px 5px; border-radius: 999px; background: transparent; color: #716d7e; font-size: 9px; }
+335:     .checkin-audience button.active { border-color: #29243d; background: #29243d; color: white; }
+336:     .idea { display: flex; width: 100%; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid transparent; border-radius: 12px; background: #f8f6fc; color: #4e4a5f; font-size: 11px; font-weight: 600; text-align: left; }
+337:     .idea:hover, .idea[aria-pressed="true"] { border-color: #c9b9f1; background: #f0ebff; }
+338:     .idea-swatch { width: 30px; height: 30px; border-radius: 9px; flex: none; }
+339:     .idea:nth-child(1) .idea-swatch { background: linear-gradient(145deg, #d1c3ff, #8e9cf3 55%, #5b78a7); }
+340:     .idea:nth-child(2) .idea-swatch { background: linear-gradient(145deg, #ffbd9e, #f58e90 55%, #a26fbd); }
+341:     .idea:nth-child(3) .idea-swatch { background: linear-gradient(145deg, #e7a4bd, #b5669b 55%, #705486); }
+342:     .idea:nth-child(4) .idea-swatch { background: linear-gradient(145deg, #e7ce9a, #a5bb9a 55%, #6f9789); }
+343:     .idea:nth-child(5) .idea-swatch { background: linear-gradient(145deg, #d7a88f, #966c96 55%, #4c648c); }
+344:     .idea:nth-child(6) .idea-swatch { background: linear-gradient(145deg, #f1cf7e, #dc8c65 55%, #96537f); }
+345:     .idea:nth-child(7) .idea-swatch { background: linear-gradient(145deg, #a8d4d0, #76a8b7 55%, #617aab); }
+346:     .idea:nth-child(8) .idea-swatch { background: linear-gradient(145deg, #f3c9a3, #e59775 55%, #b85770); }
+347:     .idea:nth-child(9) .idea-swatch { background: linear-gradient(145deg, #b2d6a2, #77a88f 55%, #527c8a); }
+348:     .checkin-form { display: grid; gap: 8px; margin-top: 15px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #fcfbfe; }
+349:     .checkin-form[hidden] { display: none; }
+350:     .checkin-form label { color: #625e70; font-size: 10px; font-weight: 650; }
+351:     .checkin-form select, .checkin-form input, .checkin-form textarea { width: 100%; padding: 8px 9px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 11px; }
+352:     .checkin-form textarea { min-height: 56px; resize: vertical; }
+353:     .checkin-form button { color: white; background: var(--violet); border-color: var(--violet); font-size: 11px; }
+354:     .checkin-note { margin: 0 !important; font-size: 10px !important; }
+355:     .checkin-feed { display: grid; gap: 9px; margin-top: 13px; }
+356:     .checkin-card { padding: 11px; border: 1px solid var(--line); border-radius: 12px; background: white; }
+357:     .checkin-user { display: flex; align-items: center; gap: 7px; min-width: 0; }
+358:     .checkin-user .avatar { width: 28px; height: 28px; }
+359:     .checkin-user .ulink { overflow: hidden; font-size: 10px; text-overflow: ellipsis; }
+360:     .checkin-relation { padding: 3px 6px; border-radius: 999px; color: #39766c; background: #edf5ee; font-size: 8px; white-space: nowrap; }
+361:     .checkin-place { margin: 8px 0 0 !important; color: var(--ink) !important; font-size: 12px !important; font-weight: 700; line-height: 1.4 !important; }
+362:     .checkin-category { margin: 4px 0 0 !important; color: #7655e8 !important; font-size: 9px !important; text-transform: capitalize; }
+363:     .checkin-detail { margin: 5px 0 0 !important; overflow-wrap: anywhere; font-size: 10px !important; }
+364:     .checkin-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; }
+365:     .checkin-meta .activity-time { font-size: 9px; }
+366:     .checkin-remove { padding: 4px 7px; color: #8b4654; font-size: 9px; }
+367:     .checkin-empty { margin-top: 12px !important; font-size: 10px !important; }
+368:     .checkin-more { width: 100%; margin-top: 9px; font-size: 10px; }
+369:     .checkin-feedback { min-height: 1em; color: #39766c; font-size: 10px; }
+370:     .side-note { margin-top: 15px !important; padding-top: 13px; border-top: 1px solid #f0edf5; }
+371:     .activity-panel { margin-top: 16px; padding: 18px; background: white; border: 1px solid var(--line); border-radius: 19px; box-shadow: 0 10px 30px #34235d08; }
+372:     .activity-heading { margin: 0 0 12px; font-family: var(--serif); font-size: 20px; font-weight: 500; }
+373:     .activity-group + .activity-group { margin-top: 17px; padding-top: 15px; border-top: 1px solid #f0edf5; }
+374:     .activity-subhead { margin: 0 0 9px; color: #827d91; font-size: 9px; letter-spacing: 1.5px; font-weight: 750; text-transform: uppercase; }
+375:     .activity-list { display: grid; gap: 9px; }
+376:     .activity-item, .visitor-item { display: flex; align-items: center; gap: 9px; min-width: 0; }
+377:     .activity-icon { width: 30px; height: 30px; display: grid; place-items: center; flex: none; color: #7655e8; background: #f0ebff; border-radius: 10px; font-size: 12px; font-weight: 750; }
+378:     .activity-copy { min-width: 0; flex: 1; color: #5e5a6c; font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+379:     .activity-copy .ulink { color: var(--ink); }
+380:     .activity-detail { display: -webkit-box; overflow: hidden; color: var(--muted); -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+381:     .activity-time { display: block; color: #9691a2; font-size: 9px; }
+382:     .activity-thumb { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; flex: none; }
+383:     .visitor-item .avatar { width: 28px; height: 28px; }
+384:     .activity-empty { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.6; }
+385:     .inbox-link { padding: 9px 12px; color: var(--ink); background: white; border: 1px solid var(--line); border-radius: 11px; text-decoration: none; font-size: 12px; font-weight: 650; }
+386:     #inboxView { max-width: 1190px; min-height: calc(100vh - 110px); margin: 34px auto; padding: 0 24px 50px; }
+387:     .inbox-title { margin: 0 0 18px; font-family: var(--serif); font-size: 34px; font-weight: 500; }
+388:     .inbox-layout { min-height: 590px; display: grid; grid-template-columns: 320px minmax(0, 1fr); overflow: hidden; background: white; border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 10px 30px #34235d08; }
+389:     .conversation-sidebar { padding: 18px; border-right: 1px solid var(--line); }
+390:     .conversation-sidebar-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 14px; }
+391:     .conversation-sidebar-head h2 { margin: 0; font-size: 15px; }
+392:     .message-filters { display: flex; gap: 5px; overflow-x: auto; margin: 0 -2px 12px; padding: 2px; }
+393:     .message-filter { flex: none; padding: 7px 9px; border-radius: 999px; font-size: 10px; }
+394:     .message-filter.active { color: white; background: #29243d; border-color: #29243d; }
+395:     .conversation-sidebar-head button, .new-conversation button { padding: 8px 10px; color: white; background: var(--violet); border-color: var(--violet); font-size: 11px; }
+396:     .new-conversation { display: grid; gap: 8px; margin-bottom: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 13px; background: #f8f8f3; }
+397:     .new-conversation[hidden] { display: none; }
+398:     .new-conversation input, .message-composer input[type=text] { width: 100%; min-width: 0; padding: 10px 11px; border: 1px solid var(--line); border-radius: 9px; font: inherit; font-size: 12px; }
+399:     .recipient-suggestions { display: grid; max-height: 180px; overflow-y: auto; border: 1px solid var(--line); border-radius: 9px; background: white; }
+400:     .recipient-suggestions[hidden] { display: none; }
+401:     .recipient-suggestions button { padding: 9px 10px; border: 0; border-radius: 0; color: var(--ink); background: white; text-align: left; }
+402:     .recipient-suggestions button + button { border-top: 1px solid var(--line); }
+403:     .recipient-suggestions p { margin: 0; padding: 9px 10px; color: var(--muted); font-size: 11px; }
+404:     .selected-recipients { display: flex; flex-wrap: wrap; gap: 5px; }
+405:     .recipient-chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; border-radius: 999px; background: #eaf2e9; color: var(--ink); font-size: 11px; }
+406:     .recipient-chip button { padding: 0 2px; border: 0; color: var(--muted); background: transparent; font-size: 14px; line-height: 1; }
+407:     .conversation-list { display: grid; gap: 5px; }
+408:     .conversation-item { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px; border: 0; background: transparent; text-align: left; }
+409:     .conversation-item.active { background: #eef4ed; }
+410:     .conversation-item:hover { background: #f5f7f2; }
+411:     .conversation-copy { min-width: 0; flex: 1; }
+412:     .conversation-name, .conversation-preview { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+413:     .conversation-name { font-size: 12px; font-weight: 700; }
+414:     .conversation-preview { margin-top: 3px; color: var(--muted); font-size: 10px; font-weight: 400; }
+415:     .conversation-unread { display: inline-grid; min-width: 17px; height: 17px; place-items: center; margin-left: 5px; padding: 0 4px; border-radius: 999px; background: var(--violet); color: white; font-size: 9px; }
+416:     .chat-pane { min-width: 0; display: flex; flex-direction: column; }
+417:     .chat-heading { min-height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); font-size: 14px; font-weight: 700; }
+418:     .chat-heading-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+419:     .chat-actions { position: relative; display: flex; align-items: center; gap: 5px; }
+420:     .chat-actions summary { padding: 6px 9px; border: 1px solid var(--line); border-radius: 9px; cursor: pointer; list-style: none; font-size: 12px; }
+421:     .chat-menu { position: absolute; z-index: 5; top: calc(100% + 5px); right: 0; display: grid; width: 180px; padding: 5px; border: 1px solid var(--line); border-radius: 11px; background: white; box-shadow: 0 8px 24px #26213b1a; }
+422:     .chat-menu button { border: 0; background: white; text-align: left; font-size: 11px; }
+423:     .chat-menu button[hidden] { display: none; }
+424:     .chat-window { position: fixed; z-index: 100; right: 20px; bottom: 20px; width: min(460px, calc(100vw - 30px)); height: min(640px, calc(100vh - 100px)); min-height: 360px; border: 1px solid var(--line); border-radius: 16px; background: white; box-shadow: 0 15px 50px #201c2e45; }
+425:     .message-list { min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; padding: 20px; }
+426:     .message-empty { margin: auto; color: var(--muted); font-size: 12px; text-align: center; }
+427:     .message-bubble { max-width: min(76%, 460px); align-self: flex-start; padding: 10px 13px; border-radius: 15px 15px 15px 4px; background: #f0f2ec; color: var(--ink); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+428:     .message-bubble.mine { align-self: flex-end; border-radius: 15px 15px 4px 15px; background: #e5f1e9; }
+429:     .message-sender { display: block; margin-bottom: 3px; color: #39766c; font-size: 10px; font-weight: 700; }
+430:     .message-bubble img { display: block; max-width: 100%; max-height: 300px; margin-top: 6px; border-radius: 9px; }
+431:     .message-time { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; }
+432:     .message-delete { display: block; margin: 5px 0 0 auto; padding: 3px 6px; border: 0; background: transparent; color: var(--muted); font-size: 9px; }
+433:     .message-composer { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
+434:     .message-composer input[type=text] { flex: 1; }
+435:     .message-composer input[type=file] { display: none; }
+436:     .message-composer button { color: white; background: var(--violet); border-color: var(--violet); }
+437:     .message-composer .media-tool { width: 34px; min-width: 34px; padding: 7px 0; color: var(--ink); background: #f7f6fb; border-color: var(--line); }
+438:     .emoji-tray { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 12px; border-top: 1px solid var(--line); }
+439:     .emoji-tray[hidden] { display: none; }
+440:     .emoji-tray button { padding: 5px; border: 0; background: transparent; font-size: 20px; }
+441:     .message-media { display: block; max-width: 100%; max-height: 300px; margin-top: 6px; border-radius: 9px; }
+442:     .message-bubble video.message-media { height: auto; background: #17151d; }
+443:     .inbox-note { margin: 8px 0 0; color: var(--muted); font-size: 10px; }
+444:     #profileView { max-width: 1220px; margin: 36px auto; padding: 0 22px; }
+445:     .profile-content-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(310px, .82fr); gap: 18px; align-items: start; }
+446:     .profile-left-column, .profile-right-column { min-width: 0; display: grid; gap: 12px; align-content: start; }
+447:     .profile-right-column .profile-gallery { margin: 0; }
+448:     .profile-post-list { display: grid; gap: 14px; }
+449:     .profile-post-card { overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: white; }
+450:     .profile-post-card img, .profile-post-card video { display: block; width: 100%; max-height: 540px; object-fit: contain; background: #17151d; }
+451:     .profile-post-copy { padding: 12px 14px 14px; }
+452:     .profile-post-copy p { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+453:     .profile-post-date { color: var(--muted); font-size: 11px; }
+454:     .chat-requests-panel { margin: 0 0 14px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 16px; background: white; box-shadow: 0 8px 26px #34235d08; }
+455:     .chat-requests-panel h2 { margin: 0 0 6px; font-family: var(--serif); font-size: 19px; font-weight: 600; }
+456:     #profileView .back { color: var(--muted); text-decoration: none; font-size: 13px; }
+457:     .phead { display: flex; align-items: center; gap: 20px; margin: 20px 0; flex-wrap: wrap; }
+458:     .pname { font-family: var(--serif); font-size: 28px; font-weight: 500; }
+459:     .psub { color: var(--muted); }
+460:     .profile-username-line { display: flex; align-items: center; gap: 9px; }
+461:     .profile-actions { position: relative; }
+462:     .profile-follow-button { padding: 7px 11px; color: white; background: var(--violet); border-color: var(--violet); font-size: 11px; }
+463:     .profile-follow-status { color: #a33; font-size: 10px; }
+464:     .profile-actions summary { color: var(--muted); cursor: pointer; font-size: 12px; list-style: none; }
+465:     .profile-actions summary::-webkit-details-marker { display: none; }
+466:     .profile-actions-menu { position: absolute; z-index: 2; top: calc(100% + 6px); left: 0; display: grid; gap: 4px; min-width: 140px; padding: 6px; border: 1px solid var(--line); border-radius: 10px; background: white; box-shadow: 0 8px 24px #26213b1a; }
+467:     .profile-actions-menu a, .profile-actions-menu button { display: block; padding: 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font: inherit; font-size: 12px; text-align: left; text-decoration: none; white-space: nowrap; }
+468:     .profile-actions-menu a:hover, .profile-actions-menu button:hover { background: #f5f7f2; }
+469:     .profile-message-error { max-width: 220px; color: #a33; font-size: 11px; }
+470:     .stats { display: flex; gap: 20px; font-size: 13px; margin-bottom: 12px; }
+471:     .stats button { padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; }
+472:     .stats button:hover { color: var(--violet); box-shadow: none; transform: none; text-decoration: underline; }
+473:     .connections-panel { max-width: 480px; margin: 10px 0 18px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: white; }
+474:     .connections-panel[hidden] { display: none; }
+475:     .connections-panel h2 { margin: 0 0 10px; font-size: 14px; }
+476:     .connections-list { display: grid; gap: 6px; max-height: 320px; overflow-y: auto; }
+477:     .connection-link { display: flex; align-items: center; gap: 9px; padding: 7px; border-radius: 9px; color: var(--ink); text-decoration: none; font-size: 12px; }
+478:     .connection-link:hover { background: #f5f7f2; }
+479:     .connection-link .avatar { width: 32px; height: 32px; }
+480:     .talk-request-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+481:     .talk-request-row:last-child { border-bottom: 0; }
+482:     .talk-request-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+483:     .talk-request-status { color: var(--muted); }
+484:     .profile-feedback { min-height: 1em; color: var(--muted); font-size: 12px; }
+485:     .connection-empty, .connection-error { margin: 0; color: var(--muted); font-size: 12px; }
+486:     .connection-error { color: #a33; }
+487:     .bio { white-space: pre-wrap; margin: 8px 0; overflow-wrap: anywhere; }
+488:     .details { color: #625e70; font-size: 13px; display: flex; gap: 14px; flex-wrap: wrap; margin: 6px 0; }
+489:     .chip { display: inline-block; color: #6850b4; background: #f0ebff; border-radius: 999px; padding: 5px 11px; margin: 2px 4px 2px 0; font-size: 12px; }
+490:     .editform { background: white; border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 10px; margin: 12px 0; }
+491:     .editform label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+492:     .editform input[type=text], .editform input[type=number], .editform input[type=date], .editform input[type=email], .editform input[type=tel], .editform textarea, .editform select { width: 100%; box-sizing: border-box; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; font: inherit; }
+493:     .location-search-wrap { position: relative; }
+494:     .location-search-results { position: absolute; z-index: 8; inset: calc(100% + 3px) 0 auto; max-height: 220px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; background: white; box-shadow: 0 8px 22px #26213b18; }
+495:     .location-search-results[hidden] { display: none; }
+496:     .location-search-results button { width: 100%; padding: 9px 11px; border: 0; border-radius: 0; background: white; text-align: left; }
+497:     .location-search-results button:hover, .location-search-results button:focus { background: #f4f1fa; }
+498:     .profile-contact { display: grid; gap: 6px; margin: 12px 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: #625e70; font-size: 12px; }
+499:     .profile-contact a { color: var(--violet); text-decoration: none; }
+500:     .profile-contact a:hover { text-decoration: underline; }
+501:     .editform .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+502:     .note { color: var(--muted); font-size: 12px; }
+503:     .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+504:     .grid img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: #eee; border-radius: 12px; }
+505:     .profile-gallery { margin-top: 24px; }
+506:     .gallery-tabs { display: flex; gap: 8px; margin: 0 0 12px; border-bottom: 1px solid var(--line); }
+507:     .gallery-tab { padding: 10px 13px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--muted); font-size: 12px; }
+508:     .gallery-tab.active { color: var(--ink); border-bottom-color: var(--violet); }
+509:     .gallery-grid video { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: #17151d; border-radius: 12px; }
+510:     .profile-picture-update { margin-top: 8px; }
+511:     #settingsView { max-width: 900px; margin: 34px auto; padding: 0 22px 56px; }
+512:     .dashboard-card { margin-bottom: 16px; }
+513:     .dashboard-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 9px; }
+514:     .dashboard-metric { display: block; min-height: 82px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #fbfcf8; color: inherit; text-decoration: none; transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease; }
+515:     .dashboard-metric:hover, .dashboard-metric:focus-visible { border-color: #c9b9f1; box-shadow: 0 6px 18px #34235d12; transform: translateY(-2px); outline: none; }
+516:     .dashboard-metric strong { display: block; color: var(--violet); font-family: var(--serif); font-size: 25px; font-weight: 600; }
+517:     .dashboard-metric span { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; line-height: 1.4; }
+518:     .dashboard-metric .dashboard-metric-action { color: var(--violet); font-weight: 700; }
+519:     .dashboard-lists { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+520:     .dashboard-list h3 { margin: 0 0 8px; font-size: 12px; }
+521:     .dashboard-list { scroll-margin-top: 24px; }
+522:     .dashboard-list .activity-list { display: grid; gap: 4px; }
+523:     .dashboard-user { display: flex; align-items: center; gap: 7px; padding: 6px 0; color: var(--ink); text-decoration: none; font-size: 11px; }
+524:     .dashboard-user:hover { color: var(--violet); }
+525:     .dashboard-user .avatar { width: 28px; height: 28px; }
+526:     .dashboard-error { color: #a33; }
+527:     #userSearchView { max-width: 720px; margin: 34px auto; padding: 0 22px 56px; }
+528:     .user-search-heading { margin-bottom: 18px; }
+529:     .user-search-heading h1 { margin: 0; font-family: var(--serif); font-size: 34px; font-weight: 500; }
+530:     .user-search-heading p { margin: 7px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+531:     .user-search-form { display: flex; gap: 8px; margin-bottom: 14px; }
+532:     .user-search-form input { min-width: 0; flex: 1; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; font: inherit; }
+533:     .user-search-form button { color: white; background: var(--violet); border-color: var(--violet); }
+534:     .user-search-results { display: grid; gap: 7px; }
+535:     .user-search-result { display: flex; align-items: center; gap: 11px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: white; color: var(--ink); text-decoration: none; font-size: 13px; }
+536:     .user-search-result:hover { border-color: #b7c9bb; box-shadow: 0 5px 15px #34235d12; }
+537:     .user-search-result-label { display: grid; gap: 2px; }
+538:     .user-search-result-label strong { font-size: 12px; }
+539:     .user-search-result-label span { color: var(--muted); font-size: 11px; }
+540:     .sidebar-people-search { margin-top: 0; }
+541:     .sidebar-people-search .user-search-form { margin: 0 0 9px; }
+542:     .sidebar-people-search .user-search-form input { flex-basis: 100%; }
+543:     .user-search-message { min-height: 1.4em; color: var(--muted); font-size: 12px; }
+544:     .settings-heading { margin-bottom: 22px; }
+545:     .settings-heading h1 { margin: 0; font-family: var(--serif); font-size: 34px; font-weight: 500; }
+546:     .settings-heading p { margin: 7px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+547:     .settings-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; align-items: start; }
+548:     .settings-stack { display: grid; gap: 14px; }
+549:     .settings-card { padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: white; box-shadow: 0 8px 24px #34235d08; }
+550:     .settings-admin-card { grid-column: 1 / -1; border-color: #cbbce8; }
+551:     .settings-admin-link { display: inline-flex; margin-top: 8px; padding: 9px 13px; border-radius: 9px; background: var(--violet); color: white; font-size: 12px; font-weight: 650; text-decoration: none; }
+552:     .settings-card h2 { margin: 0 0 5px; font-size: 15px; }
+553:     .settings-card > p { margin: 0 0 14px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+554:     .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 12px 0; border-top: 1px solid #f0f1ed; }
+555:     .setting-row:first-of-type { border-top: 0; }
+556:     .setting-copy { min-width: 0; }
+557:     .setting-copy strong { display: block; font-size: 12px; }
+558:     .setting-copy span { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+559:     .setting-row select { width: min(230px, 45%); padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: white; font: inherit; font-size: 11px; }
+560:     .setting-row input[type=checkbox] { width: 18px; height: 18px; flex: none; accent-color: var(--violet); }
+561:     .settings-save { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+562:     .settings-save button, .block-form button { color: white; background: var(--violet); border-color: var(--violet); }
+563:     .settings-status { min-height: 1em; color: var(--muted); font-size: 11px; }
+564:     .block-form { display: flex; gap: 7px; margin: 12px 0; }
+565:     .block-form input { min-width: 0; flex: 1; padding: 9px 10px; border: 1px solid var(--line); border-radius: 9px; font: inherit; font-size: 11px; }
+566:     .blocked-list { display: grid; gap: 7px; }
+567:     .blocked-user { display: flex; align-items: center; gap: 8px; padding-top: 7px; border-top: 1px solid #f0f1ed; }
+568:     .blocked-user .avatar { width: 30px; height: 30px; }
+569:     .blocked-user .ulink { min-width: 0; flex: 1; font-size: 11px; }
+570:     .blocked-user button { padding: 6px 8px; color: #8b4654; font-size: 10px; }
+571:     .settings-danger { border-color: #f0d8d8; }
+572:     .settings-danger h2 { color: #8b4654; }
+573:     .settings-danger button { width: 100%; color: #8b4654; border-color: #e7caca; }
+574:     .settings-danger button[aria-pressed="true"] { color: white; background: #39766c; border-color: #39766c; }
+575:     @media (max-width: 900px) {
+576:       .home-shell { grid-template-columns: 1fr; gap: 24px; }
+577:       .home-main { grid-column: 1; grid-row: 1; }
+578:       .home-aside { grid-column: 1; grid-row: 2; }
+579:       .hero { padding-inline: 30px; }
+580:       #auth input { width: 105px; min-width: 0; }
+581:     }
+582:     @media (max-width: 700px) {
+583:       header { min-height: 66px; padding: 0 18px; gap: 12px; }
+584:       .top-nav { display: none; }
+585:       #auth { justify-content: flex-end; flex-wrap: wrap; }
+586:       #auth input { width: 90px; padding: 8px; }
+587:       #auth button { padding: 8px 10px; }
+588:       #userSearchView { margin: 22px auto; padding-inline: 15px; }
+589:       .user-search-form { flex-wrap: wrap; }
+590:       .user-search-form input { flex-basis: 100%; }
+591:       .setting-select-row { align-items: stretch; flex-direction: column; gap: 8px; }
+592:       .setting-select-row select { width: 100%; }
+593:       .dashboard-lists { grid-template-columns: 1fr; }
+594:       #homeView { padding: 20px 15px 50px; }
+595:       .home-shell { grid-template-columns: 1fr; gap: 14px; }
+596:       .home-main, .home-aside { grid-column: 1; }
+597:       .home-main { grid-row: 1; }
+598:       .home-aside { grid-row: 2; }
+599:       .hero { min-height: 266px; flex-direction: column; align-items: flex-start; padding: 27px 24px; margin-bottom: 25px; }
+600:       .hero-copy { max-width: 100%; }
+601:       .hero h1 { max-width: 350px; font-size: clamp(38px, 10vw, 51px); }
+602:       .hero-copy p { max-width: 300px; padding-right: 30px; font-size: 12px; }
+603:       .side-panel { margin-top: 0; }
+604:       #inboxView { margin: 20px auto; padding-inline: 15px; }
+605:       .inbox-title { font-size: 29px; }
+606:       .inbox-layout { min-height: 70vh; grid-template-columns: 1fr; }
+607:       .conversation-sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
+608:       .conversation-list { max-height: 190px; overflow-y: auto; }
+609:       .chat-pane { min-height: 420px; }
+610:       .message-composer { flex-wrap: wrap; }
+611:       .message-composer input[type=file] { width: 145px; }
+612:       .section-title { font-size: 24px; }
+613:       #tabs { gap: 0; }
+614:       #tabs .tab { padding: 7px 9px; }
+615:       #settingsView { margin: 22px auto; padding-inline: 15px; }
+616:       .settings-grid { grid-template-columns: 1fr; }
+617:       #communityView { margin: 18px auto; padding-inline: 14px; }
+618:       .community-workspace { grid-template-columns: minmax(0,1fr); gap: 12px; }
+619:       .community-sidebar { position: static; gap: 10px; padding: 12px; }
+620:       .community-side-list { display: flex; max-width: 100%; overflow-x: auto; }
+621:       .community-side-item { flex: 0 0 auto; width: min(210px,70vw); }
+622:       .community-banner { min-height: 285px; padding: 18px; }
+623:       .community-banner-content { align-items: flex-start; flex-direction: column; }
+624:       .community-banner-actions { justify-content: flex-start; }
+625:       .community-banner-actions button { min-height: 36px; }
+626:       #profileView { margin: 18px auto; padding-inline: 14px; }
+627:       .profile-hero-body { align-items: flex-start; flex-direction: column; gap: 9px; padding: 0 16px 16px; }
+628:       .profile-hero-body .avatar-with-mood { margin-top: -42px; }
+629:       .profile-hero-body .avatar-with-mood > .avatar { width: 88px; height: 88px; }
+630:       .profile-hero-body .phead { width: 100%; }
+631:       .profile-hero-body .phead > div:last-child { width: 100%; }
+632:       #profileView > .stats { flex-wrap: wrap; }
+633:       #profileView > .stats > * { min-width: 90px; padding-inline: 6px; }
+634:       .profile-content-columns { grid-template-columns: 1fr; }
+635:     }
+636:     @media (max-width: 400px) {
+637:       .logo { font-size: 18px; }
+638:       #auth { gap: 4px; }
+639:       #auth input { width: 76px; }
+640:       #auth button { padding: 7px; font-size: 11px; }
+641:       .hero { padding-inline: 20px; }
+642:       .section-head { align-items: flex-start; flex-direction: column; gap: 8px; }
+643:     }
+644:     @media (prefers-reduced-motion: reduce) {
+645:       *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+646:     }
+647:   .news-group { margin-bottom: 12px; }
+648: .news-subhead { margin: 0 0 6px; font-size: 12px; font-weight: 700; color: var(--violet); }
+649: .news-item { display: block; margin-bottom: 7px; font-size: 12px; line-height: 1.35; color: inherit; text-decoration: none; }
+650: .news-item:hover { text-decoration: underline; }
+651: .news-source { display: block; font-size: 10px; color: var(--muted); }
+652: .news-note { margin: 0; font-size: 11px; color: var(--muted); }
+653: .fun-text { margin: 0 0 8px; font-size: 12px; line-height: 1.45; }
+654: .fun-next { padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; background: white; color: var(--violet); font: inherit; font-size: 11px; cursor: pointer; }
+655: .fun-next:hover { background: #f4f1fb; }
+656: .dark-quote { margin-top: 14px; padding: 14px; border-radius: 14px; background: #1f1b2e; color: #e8e4f5; }
+657: .dark-quote-head { margin: 0 0 8px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #a79bd6; }
+658: .dark-quote-text { margin: 0 0 10px; font-size: 13px; line-height: 1.45; font-style: italic; }
+659: .dark-next { background: transparent; border-color: #4a4266; color: #cfc6f2; }
+660: .dark-next:hover { background: #2a2540; }
+661: .post-delete-button { margin-left: auto; padding: 4px 10px; border: 1px solid #e3c4c4; border-radius: 999px; background: transparent; color: #b4423f; font: inherit; font-size: 11px; cursor: pointer; }
+662: .post-delete-button:hover { background: #fbeeee; }
+663: .comment-delete-button { margin-left: 6px; padding: 0 6px; border: 0; background: transparent; color: #b4423f; font: inherit; font-size: 11px; cursor: pointer; opacity: .6; }
+664: .comment-delete-button:hover { opacity: 1; }
+665: .story-tray { display: flex; gap: 12px; overflow-x: auto; padding: 4px 2px 10px; margin-bottom: 10px; }
+666: .story-bubble { display: grid; justify-items: center; gap: 4px; min-width: 64px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+667: .story-name { max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+668: .story-ring { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 50%; background: linear-gradient(135deg, #6a54c6, #c2547a, #d98b2b); }
+669: .story-ring.seen { background: #cfcbd8; }
+670: .story-ring .avatar { width: 52px; height: 52px; border: 2px solid white; box-sizing: border-box; }
+671: .story-add-plus { display: grid; place-items: center; width: 58px; height: 58px; border: 2px dashed var(--violet); border-radius: 50%; color: var(--violet); font-size: 22px; box-sizing: border-box; }
+672: .sv-overlay { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; background: rgba(10,8,18,.92); }
+673: .sv-card { position: relative; width: min(420px, 100vw); height: min(760px, 100vh); overflow: hidden; border-radius: 16px; background: #000; color: white; }
+674: .sv-body { position: absolute; inset: 0; display: grid; place-items: center; cursor: pointer; }
+675: .sv-body img, .sv-body video { width: 100%; height: 100%; object-fit: contain; }
+676: .sv-text { padding: 28px; text-align: center; font-size: 24px; font-weight: 600; line-height: 1.35; word-break: break-word; }
+677: .sv-caption { position: absolute; left: 0; right: 0; bottom: 0; padding: 40px 16px 52px; background: linear-gradient(transparent, rgba(0,0,0,.7)); text-align: center; font-size: 14px; word-break: break-word; }
+678: .sv-bars { position: absolute; top: 0; left: 0; right: 0; z-index: 3; display: flex; gap: 4px; padding: 10px 10px 6px; }
+679: .sv-bar { flex: 1; height: 3px; overflow: hidden; border-radius: 2px; background: rgba(255,255,255,.3); }
+680: .sv-fill { width: 0; height: 100%; background: white; }
+681: .sv-head { position: absolute; top: 24px; left: 10px; right: 10px; z-index: 3; display: flex; align-items: center; gap: 8px; font-size: 13px; text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+682: .sv-head .avatar { width: 32px; height: 32px; }
+683: .sv-mood { padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,.2); font-size: 11px; }
+684: .sv-foot { position: absolute; left: 12px; right: 12px; bottom: 10px; z-index: 3; display: flex; align-items: center; justify-content: space-between; font-size: 12px; }
+685: .sv-btn { padding: 4px 10px; border: 0; border-radius: 999px; background: rgba(255,255,255,.18); color: white; font: inherit; cursor: pointer; }
+686: .sc-overlay { position: fixed; inset: 0; z-index: 9998; display: grid; place-items: center; padding: 12px; background: rgba(20,16,32,.55); }
+687: .sc-card { display: grid; gap: 10px; width: min(440px, 100%); max-height: 92vh; overflow: auto; padding: 16px; border-radius: 18px; background: white; box-sizing: border-box; }
+688: .sc-title { margin: 0; font-size: 16px; }
+689: .sc-tabs { display: flex; gap: 6px; }
+690: .sc-tab { flex: 1; padding: 7px; border: 1px solid var(--line); border-radius: 10px; background: white; font: inherit; font-size: 12px; cursor: pointer; }
+691: .sc-tab.on { border-color: var(--violet); background: var(--violet); color: white; }
+692: .sc-text { width: 100%; min-height: 120px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; font: inherit; resize: vertical; box-sizing: border-box; }
+693: .sc-text.colored { border: 0; color: white; font-size: 18px; font-weight: 600; text-align: center; }
+694: .sc-text.colored::placeholder { color: rgba(255,255,255,.7); }
+695: .sc-count { color: var(--muted); font-size: 10px; text-align: right; }
+696: .sc-swatches, .sc-moods { display: flex; flex-wrap: wrap; gap: 6px; }
+697: .sc-swatch { width: 24px; height: 24px; padding: 0; border: 2px solid transparent; border-radius: 50%; cursor: pointer; }
+698: .sc-swatch.on { border-color: #1f1b2e; }
+699: .sc-mood { padding: 4px 9px; border: 1px solid var(--line); border-radius: 999px; background: white; font: inherit; font-size: 11px; cursor: pointer; }
+700: .sc-mood.on { border-color: var(--violet); background: #efeafc; }
+701: .sc-preview img, .sc-preview video { width: 100%; max-height: 240px; border-radius: 10px; background: #000; object-fit: contain; }
+702: .sc-row { display: flex; justify-content: flex-end; gap: 8px; }
+703: .sc-btn { padding: 8px 16px; border: 1px solid var(--line); border-radius: 999px; background: white; font: inherit; font-size: 13px; cursor: pointer; }
+704: .sc-btn.primary { border-color: var(--violet); background: var(--violet); color: white; }
+705: .sc-err { min-height: 1em; margin: 0; color: #b4423f; font-size: 12px; }
+706: .story-tray { scroll-snap-type: x proximity; scroll-behavior: smooth; scrollbar-width: thin; }
+707: .story-bubble { scroll-snap-align: start; flex: none; }
+708: .story-bubble.story-card { min-width: 84px; }
+709: .story-card .story-name { max-width: 84px; }
+710: .story-thumb { position: relative; display: block; width: 84px; height: 120px; overflow: hidden; border: 3px solid #c2547a; border-radius: 14px; background: #1f1b2e; box-sizing: border-box; }
+711: .story-thumb.seen { border-color: #cfcbd8; }
+712: .story-thumb img, .story-thumb video { display: block; width: 100%; height: 100%; object-fit: cover; }
+713: .story-thumb-text { display: grid; place-items: center; width: 100%; height: 100%; padding: 6px; overflow: hidden; color: white; font-size: 11px; font-weight: 600; line-height: 1.25; text-align: center; word-break: break-word; box-sizing: border-box; }
+714: .story-thumb .avatar { position: absolute; left: 5px; top: 5px; width: 26px; height: 26px; border: 2px solid white; box-sizing: border-box; }
+715: .share-overlay { position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; padding: 12px; background: rgba(10,8,18,.6); }
+716: .share-box { display: grid; gap: 8px; width: min(340px, 100%); padding: 16px; border-radius: 16px; background: white; color: #1f1b2e; box-sizing: border-box; }
+717: .share-note { margin: 0; color: #625e70; font-size: 11px; line-height: 1.4; }
+718: .share-opt { padding: 9px 12px; border: 1px solid #e3deee; border-radius: 10px; background: white; color: inherit; font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+719: .share-opt:hover { background: #f4f1fb; }
+720: .share-close { text-align: center; color: #625e70; }
+721: .fb-fab { position: fixed; right: 16px; bottom: 16px; z-index: 9000; padding: 10px 16px; border: 0; border-radius: 999px; background: var(--violet); color: white; font: inherit; font-size: 13px; box-shadow: 0 6px 18px #34235d40; cursor: pointer; }
+722: .fb-fab:hover { filter: brightness(1.1); }
+723: .fb-overlay { position: fixed; inset: 0; z-index: 9997; display: grid; place-items: center; padding: 12px; background: rgba(20,16,32,.55); }
+724: .fb-card { display: grid; gap: 10px; width: min(420px, 100%); padding: 16px; border-radius: 18px; background: white; color: #1f1b2e; box-sizing: border-box; }
+725: .fb-title { margin: 0; font-size: 16px; }
+726: .fb-cats { display: flex; flex-wrap: wrap; gap: 6px; }
+727: .fb-cat { padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: white; font: inherit; font-size: 12px; cursor: pointer; }
+728: .fb-cat.on { border-color: var(--violet); background: #efeafc; }
+729: .fb-text { width: 100%; min-height: 120px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; font: inherit; resize: vertical; box-sizing: border-box; }
+730: .fb-meta { display: flex; justify-content: space-between; gap: 8px; color: #625e70; font-size: 11px; }
+731: .fb-status { min-height: 1em; margin: 0; font-size: 12px; }
+732: .fb-row { display: flex; justify-content: flex-end; gap: 8px; }
+733: .fb-btn { padding: 8px 16px; border: 1px solid var(--line); border-radius: 999px; background: white; font: inherit; font-size: 13px; cursor: pointer; }
+734: .fb-btn.primary { border-color: var(--violet); background: var(--violet); color: white; }
+735: .fb-fab.in-nav { position: static; right: auto; bottom: auto; z-index: auto; margin-left: 10px; padding: 7px 16px; vertical-align: middle; background: #ff4d1f; color: white; font-size: 13px; font-weight: 800; letter-spacing: .02em; white-space: nowrap; box-shadow: 0 0 0 2px #fff, 0 4px 14px #ff4d1f66; }
+736: .fb-fab.in-nav:hover { background: #e63e12; filter: none; transform: translateY(-1px); }
+737:     @media (max-width: 560px) {
+738:       .hero.has-cover::before { background: linear-gradient(100deg, #201c2e88 0%, #201c2e55 58%, #201c2e22 100%); }
+739:       .hero-cover-actions { top: 10px; right: 10px; left: 10px; max-width: none; justify-items: stretch; }
+740:       .hero-cover-buttons { flex-wrap: wrap; justify-content: flex-end; }
+741:       .hero-cover-actions button { min-height: 36px; font-size: 11px; }
+742:       .cover-editor { gap: 8px; padding: 7px; }
+743:       .cover-direction-controls { grid-template-columns: repeat(3, 27px); grid-template-rows: repeat(3, 26px); }
+744:       .cover-editor button { width: 27px; min-height: 26px; }
+745:       .cover-editor-hint { display: none; }
+746:       .chat-window { right: 8px; bottom: 8px; width: calc(100vw - 16px); height: min(72vh, 620px); }
+747:       #adminView { margin: 22px auto; padding-inline: 14px; }
+748:     }
+749: </style>
+750: </head>
+751: <body>
+752:   <header>
+753:     <a class="logo" href="#/" aria-label="Community home"><span class="logo-mark" aria-hidden="true">âœ³</span>Community</a>
+754:     <nav class="top-nav" aria-label="Main navigation">
+755:       <a href="#/">Discover</a>
+756:     </nav>
+757:     <div id="auth"></div>
+758:   </header>
+759: 
+760:   <div id="homeView">
+761:     <main class="home-shell">
+762:       <section class="home-main" aria-label="Community feed">
+763:         <div class="hero">
+764:           <img id="heroCoverImage" class="hero-cover" alt="" hidden>
+765:           <div id="heroCoverActions" class="hero-cover-actions" hidden>
+766:             <input id="heroCoverFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+767:             <div class="hero-cover-buttons">
+768:               <button id="heroCoverChoose" type="button">Set background image</button>
+769:               <button id="heroCoverAdjust" type="button" aria-controls="heroCoverEditor" aria-expanded="false" hidden>Adjust position</button>
+770:               <button id="heroCoverRemove" class="cover-remove" type="button" hidden>Remove</button>
+771:             </div>
+772:             <div id="heroCoverEditor" class="cover-editor" hidden>
+773:               <div class="cover-direction-controls" role="group" aria-label="Move background image">
+774:                 <button class="cover-move-up" type="button" data-cover-move="up" aria-label="Move image up">â†‘</button>
+775:                 <button class="cover-move-left" type="button" data-cover-move="left" aria-label="Move image left">â†</button>
+776:                 <button class="cover-move-right" type="button" data-cover-move="right" aria-label="Move image right">â†’</button>
+777:                 <button class="cover-move-down" type="button" data-cover-move="down" aria-label="Move image down">â†“</button>
+778:               </div>
+779:               <div class="cover-zoom-controls" role="group" aria-label="Zoom background image">
+780:                 <button type="button" data-cover-zoom="-10" aria-label="Zoom out">âˆ’</button>
+781:                 <output id="coverZoomValue" class="cover-zoom-value">100%</output>
+782:                 <button type="button" data-cover-zoom="10" aria-label="Zoom in">+</button>
+783:               </div>
+784:               <span class="cover-editor-hint">Changes save automatically.</span>
+785:               <button id="heroCoverSaveClose" class="cover-save-close" type="button">Save &amp; close</button>
+786:             </div>
+787:             <span id="heroCoverFeedback" class="hero-cover-feedback" aria-live="polite"></span>
+788:           </div>
+789:         </div>
+790:         <section class="active-users" aria-label="Online members">
+791:           <div id="activeUsersList" class="active-users-list" aria-live="polite">
+792:             <p class="active-users-empty">Checking who's online...</p>
+793:           </div>
+794:           <p id="activePresenceStatus" class="active-users-empty" hidden></p>
+795:         </section>
+796:         <div class="section-head">
+797:           <div>
+798:             <h2 class="section-title">Fresh from the community</h2>
+799:             <p class="section-kicker">Small moments. Big imagination.</p>
+800:           </div>
+801:           <div id="tabs"></div>
+802:         </div>
+803:         <div id="storyTray" class="story-tray" hidden></div>
+804:         <div id="composer"></div>
+805:         <div id="feed"></div>
+806:       </section>
+807:       <aside class="home-aside" aria-label="Community check-in map">
+808:         <section class="activity-panel sidebar-people-search" aria-label="Find people">
+809:           <h2 class="activity-heading">Find people</h2>
+810:           <form id="sidebarPeopleSearchForm" class="user-search-form">
+811:             <input id="sidebarPeopleSearchInput" type="search" name="q" maxlength="50" autocomplete="off" placeholder="Search by name or username" aria-label="Search people by name or username">
+812:             <button type="submit">Search</button>
+813:           </form>
+814:           <p id="sidebarPeopleSearchStatus" class="user-search-message" aria-live="polite">Search by a personâ€™s name or username.</p>
+815:           <div id="sidebarPeopleSearchResults" class="user-search-results" aria-live="polite"></div>
+816:         </section>
+817:         <section id="activityPanel" class="activity-panel" aria-label="Your activity" hidden>
+818:           <h2 class="activity-heading">Your little corner</h2>
+819:           <div class="activity-group">
+820:             <h3 class="activity-subhead">Mentions &amp; photo tags</h3>
+821:             <div id="activityNotifications" class="activity-list"></div>
+822:           </div>
+823:           <div class="activity-group">
+824:             <h3 class="activity-subhead">Recent profile visitors</h3>
+825:             <div id="profileVisitors" class="activity-list"></div>
+826:           </div>
+827:         </section>
+828:       <section id="newsPanel" class="activity-panel" aria-label="Top stories">
+829:   <h2 class="activity-heading">Top stories</h2>
+830:   <div id="newsBody"><p class="news-note">Loading headlines...</p></div>
+831: </section>
+832:       <section id="funPanel" class="activity-panel" aria-label="Fun facts and quotes">
+833:   <h2 class="activity-heading">Fun fact</h2>
+834:   <p id="funFactText" class="fun-text"></p>
+835:   <button id="funFactNext" class="fun-next" type="button">Another one</button>
+836:   <div class="dark-quote">
+837:     <h3 class="dark-quote-head">Dark quote</h3>
+838:     <p id="darkQuoteText" class="dark-quote-text"></p>
+839:     <button id="darkQuoteNext" class="fun-next dark-next" type="button">Next quote</button>
+840:   </div>
+841: </section>
+842:       </aside>
+843:     </main>
+844:   </div>
+845:   <div id="profileView" hidden></div>
+846:   <div id="inboxView" hidden></div>
+847:   <div id="friendsView" hidden></div>
+848:   <div id="communityView" hidden></div>
+849:   <div id="adminView" hidden></div>
+850:   <div id="appPausedView" class="app-paused-view" hidden>
+851:     <section class="settings-card"><h1>Community is temporarily paused</h1><p>A superadmin can sign in to the Admin hub to turn the app back on.</p></section>
+852:   </div>
+853:   <div id="userSearchView" hidden></div>
+854:   <div id="settingsView" hidden></div>
+855:   <div id="signupView" hidden></div>
+856: 
+857:   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+858:   <script>
+859:     let loggedIn = false;
+860:     let currentUsername = '';
+861:     let currentIsAdmin = false;
+862:     let currentIsSuperadmin = false;
+863:     let appEnabled = true;
+864:     let scope = 'all'; // 'all' or 'following'
+865:     let activeConversationId = null;
+866:     let inboxPoll = null;
+867:     let presenceInterval = null;
+868:     let coverPosition = { x: 50, y: 50, zoom: 100 };
+869:     let coverPositionEditing = false;
+870:     let communityMap = null;
+871:     let checkinMarkerLayer = null;
+872:     let liveLocationMarkerLayer = null;
+873:     let selectedCheckinMarker = null;
+874:     let selectedMapPoint = null;
+875:     let liveLocationWatchId = null;
+876:     let liveLocationRefreshInterval = null;
+877:     let liveMapRefreshInterval = null;
+878:     let latestLivePosition = null;
+879:     let lastLivePositionSentAt = 0;
+880:     const checkinCategories = [
+881:       { key: 'all', label: 'All check-ins', icon: 'âœ¦' },
+882:       { key: 'nightclubs', label: 'Nightclubs', icon: 'â™«' },
+883:       { key: 'bars', label: 'Bars', icon: 'â—’' },
+884:       { key: 'pubs', label: 'Pubs', icon: 'âŒ‚' },
+885:       { key: 'restaurants', label: 'Restaurants', icon: 'â™¨' },
+886:       { key: 'hotels', label: 'Hotels', icon: 'âŒ‚' },
+887:       { key: 'movies', label: 'Movies', icon: 'â–£' },
+888:       { key: 'concerts', label: 'Concerts', icon: 'â™ª' },
+889:       { key: 'travel', label: 'Travel', icon: 'â†—' },
+890:       { key: 'dining', label: 'Food & dining', icon: 'âœ§' },
+891:       { key: 'outdoors', label: 'Outdoors', icon: 'â‹' },
+892:     ];
+893:     let selectedCheckinCategory = 'all';
+894:     let checkinOffset = 0;
+895:     let checkinRequestSequence = 0;
+896: 
+897:     function el(tag, text, cls) {
+898:       const e = document.createElement(tag);
+899:       if (text !== undefined) e.textContent = text;
+900:       if (cls) e.className = cls;
+901:       return e;
+==== index.html: community CSS ====
+98: #friendsView, #communityView { max-width: 1050px; margin: 32px auto; padding: 0 22px 56px; }
+102: .social-card, .community-post { padding: 15px; border: 1px solid var(--line); border-radius: 15px; background: white; box-shadow: 0 8px 24px #34235d08; }
+106: .social-card-actions button, .community-toolbar button, .community-post button { padding: 7px 11px; font-size: 11px; }
+107: .community-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 15px 0; }
+108: .community-form { display: grid; gap: 9px; padding: 14px; margin: 12px 0; border: 1px solid var(--line); border-radius: 14px; background: white; }
+109: .community-form input, .community-form textarea { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid var(--line); border-radius: 9px; font: inherit; }
+110: .community-form textarea { min-height: 92px; resize: vertical; }
+111: .community-toolbar { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0; }
+112: .community-posts { display: grid; gap: 12px; margin-top: 14px; }
+113: .community-post h3 { margin: 0 0 7px; }
+114: .community-post p { white-space: pre-wrap; overflow-wrap: anywhere; }
+115: .community-meta, .community-note { color: var(--muted); font-size: 11px; }
+116: .community-comments { display: grid; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+117: .community-comment { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+118: #communityView { max-width: 1320px; margin: 24px auto; }
+119: .community-workspace { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 20px; align-items: start; }
+120: .community-sidebar { position: sticky; top: 18px; display: grid; gap: 14px; padding: 16px; border: 1px solid var(--line); border-radius: 18px; background: #fff; box-shadow: 0 12px 32px #34235d0b;
+121: .community-sidebar-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+122: .community-sidebar-head h2, .community-sidebar-section h3 { margin: 0; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+123: .community-sidebar-section { display: grid; gap: 6px; }
+124: .community-side-list { display: grid; gap: 4px; }
+125: .community-side-item { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; padding: 9px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: 
+126: .community-side-item:hover, .community-side-item.active { border-color: #ded7f3; background: #f4f1fb; }
+127: .community-side-item img, .community-side-mark { display: grid; width: 38px; height: 38px; flex: none; place-items: center; border-radius: 12px; object-fit: cover; background: linear-gradient(135
+128: .community-side-copy { min-width: 0; }
+129: .community-side-copy strong, .community-side-copy span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+130: .community-side-copy strong { font-size: 12px; }
+131: .community-side-copy span { margin-top: 3px; color: var(--muted); font-size: 10px; }
+132: .community-main { min-width: 0; }
+133: .community-main-empty { display: grid; min-height: 380px; place-content: center; padding: 30px; border: 1px dashed #d8d2e6; border-radius: 20px; background: #fff; text-align: center; }
+134: .community-banner { position: relative; display: flex; min-height: 245px; align-items: end; overflow: hidden; padding: 24px; border: 1px solid #dcd8e5; border-radius: 22px; background: linear-gra
+135: .community-banner-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+136: .community-banner::after { position: absolute; inset: 0; background: linear-gradient(90deg,#171222c9 0%,#17122255 70%,#17122210),linear-gradient(0deg,#1712227a,transparent 70%); content: ''; }
+137: .community-banner-content { position: relative; z-index: 1; display: flex; width: 100%; align-items: end; justify-content: space-between; gap: 18px; }
+138: .community-banner-copy { max-width: 680px; }
+139: .community-banner h1 { margin: 0; font-family: var(--serif); font-size: clamp(28px,4vw,42px); font-weight: 600; letter-spacing: -.04em; }
+140: .community-banner p { margin: 8px 0 0; color: #fffE; font-size: 13px; line-height: 1.55; }
+141: .community-banner-meta { margin-top: 10px; color: #ffffffc9; font-size: 11px; }
+142: .community-banner-actions { display: flex; flex-wrap: wrap; justify-content: end; gap: 7px; }
+143: .community-banner-actions button { border-color: #ffffff85; background: #ffffffea; color: #312847; }
+144: .community-banner-actions .community-join-button { border-color: #fff; background: #fff; color: #433188; font-weight: 750; }
+145: .community-tabs { display: flex; gap: 5px; margin: 12px 0 16px; overflow-x: auto; border-bottom: 1px solid var(--line); }
+146: .community-tab { flex: none; padding: 12px 16px; border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: transparent; color: var(--muted); font-weight: 650; }
+147: .community-tab.active { border-bottom-color: #5c5ddb; color: #4c4fca; }
+148: .community-about-card, .community-composer { padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: #fff; box-shadow: 0 8px 24px #34235d08; }
+149: .community-about-card h2, .community-composer h2 { margin: 0 0 9px; font-family: var(--serif); font-size: 20px; }
+150: .community-composer { margin: 14px 0; }
+151: .community-composer .community-form { margin: 0; padding: 0; border: 0; box-shadow: none; }
+152: .community-post { overflow: hidden; padding: 0; }
+153: .community-post-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px 5px; }
+154: .community-post-head .avatar { width: 38px; height: 38px; }
+155: .community-post-author { display: grid; gap: 3px; }
+156: .community-post-author a { color: var(--ink); font-weight: 700; text-decoration: none; }
+157: .community-post-content { padding: 4px 16px 2px; }
+158: .community-post-content h3 { margin: 5px 0 7px; font-size: 17px; }
+159: .community-post-content p { margin: 0 0 12px; color: #4e4a5b; line-height: 1.65; }
+160: .community-post-actions { display: flex; align-items: center; gap: 8px; padding: 9px 16px 13px; border-top: 1px solid #f0eef4; }
+161: .community-post-actions button { background: transparent; color: #585467; border-color: transparent; }
+162: .community-discussion-form { display: grid; gap: 9px; }
+163: .community-discussion-form input, .community-discussion-form textarea { width: 100%; box-sizing: border-box; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; font: inherit;
+164: .community-discussion-form textarea { min-height: 90px; resize: vertical; }
+165: .community-create-image { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
+166: .community-member-list { display: grid; gap: 8px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+167: .community-member-row { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; padding: 7px; border-bottom: 1px solid #f0eef4; }
+168: .community-member-row:last-child { border-bottom: 0; }
+617: #communityView { margin: 18px auto; padding-inline: 14px; }
+618: .community-workspace { grid-template-columns: minmax(0,1fr); gap: 12px; }
+619: .community-sidebar { position: static; gap: 10px; padding: 12px; }
+620: .community-side-list { display: flex; max-width: 100%; overflow-x: auto; }
+621: .community-side-item { flex: 0 0 auto; width: min(210px,70vw); }
+622: .community-banner { min-height: 285px; padding: 18px; }
+623: .community-banner-content { align-items: flex-start; flex-direction: column; }
+624: .community-banner-actions { justify-content: flex-start; }
+625: .community-banner-actions button { min-height: 36px; }

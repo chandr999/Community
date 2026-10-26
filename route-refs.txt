@@ -1,0 +1,8 @@
+﻿1290: } else if (h === '#/inbox') {
+1292: } else if (h === '#/friends') {
+2165: ['pending_personal_requests_count', 'Pending personal requests', '#/inbox'],
+2892: if (location.hash === '#/inbox') {
+2895: location.hash = '#/inbox';
+3332: inbox.href = '#/inbox';
+3334: friends.href = '#/friends';
+3433: accept.onclick = async () => { accept.disabled = true; try { const result = await post('/api/personal-chat-requests/' + request.id + '/accept'); if (!

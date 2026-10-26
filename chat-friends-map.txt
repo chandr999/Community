@@ -1,0 +1,60 @@
+﻿885: <div id="inboxView" hidden></div>
+886: <div id="friendsView" hidden></div>
+904: let activeConversationId = null;
+905: let inboxPoll = null;
+1457: const chatsPanel = el('section', undefined, 'admin-panel');
+1462: const chatsTable = el('table', undefined, 'admin-table');
+1463: const chatsHead = el('tr');
+1465: const chatsThead = el('thead'); chatsThead.append(chatsHead); chatsTable.append(chatsThead);
+1466: const chatsBody = el('tbody');
+1538: const chatReportsPanel = el('section', undefined, 'admin-panel');
+1568: async function showFriends() {
+1583: const favorite = el('button', person.is_favorite ? '★ Favorited' : '☆ Add to favorites');
+1590: const favoriteSection = el('section'); favoriteSection.append(el('h2', 'Favorites'));
+1591: const favorites = people.filter(p => p.is_favorite);
+1684: const group = communities.find(item => item.id === id);
+1739: const message = response.status === 403
+2105: const message = el('p', undefined, 'signup-message');
+2872: const messageButton = el('button', 'Send message');
+2875: const messageError = el('span', undefined, 'profile-message-error');
+2890: const conversation = await response.json();
+3331: const inbox = el('a', 'Chats', 'inbox-link');
+3333: const friends = el('a', 'Friends', 'inbox-link');
+3389: function stopInboxPolling() {
+3396: async function showInbox() {
+3417: async function loadPersonalChatRequests() {
+3466: let groupMode = false;
+3472: const groupModeButton = el('button', 'Create group');
+3629: const conversationList = el('div', undefined, 'conversation-list');
+3630: let inboxFilter = 'all';
+3631: let cachedConversations = [];
+3632: const messageFilters = el('div', undefined, 'message-filters');
+3648: const chat = el('section', undefined, 'chat-pane');
+3652: const chatActions = el('div', undefined, 'chat-actions');
+3653: const chatMenu = el('details');
+3654: const chatMenuSummary = el('summary', '⋯');
+3655: const chatMenuItems = el('div', undefined, 'chat-menu');
+3656: const makeGroupAction = el('button', 'Create group chat');
+3680: const deleteChatAction = el('button', 'Delete chat from my inbox');
+3692: const renameGroupAction = el('button', 'Rename group');
+3716: const removeGroupMemberAction = el('button', 'Remove a member');
+3736: const clearGroupMessagesAction = el('button', 'Delete all group messages');
+3747: const deleteGroupAction = el('button', 'Delete group chat');
+3760: const reportChatAction = el('button', 'Report chat');
+3773: function updateChatMenuActions() {
+3775: const isGroup = Boolean(active?.is_group);
+3789: const closeChat = el('button', '×');
+3794: const messageList = el('div', undefined, 'message-list');
+3796: const messageForm = el('form', undefined, 'message-composer');
+3797: const messageInput = el('input');
+3824: async function searchChatMedia() {
+3889: const messageHint = el('p', 'Photos, GIFs, and videos up to 50 MB. Messages refresh every 5 seconds.', 'inbox-note');
+3951: async function loadConversations() {
+3985: function renderConversationItems() {
+3987: const visibleConversations = cachedConversations.filter(conversation => {
+4021: async function loadMessages(conversationId) {
+4028: const messages = await response.json();
+4156: const favoriteButton = el('button', p.favorited_by_me ? 'Remove from favorites' : 'Add to favorites');
+4767: const errorMessage = error.code === error.PERMISSION_DENIED
+5007: const groups = [['local', 'India'], ['world', 'World'], ['tech', 'Tech']];
+5556: const message = ta.value.trim();

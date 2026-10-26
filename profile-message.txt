@@ -1,0 +1,50 @@
+﻿      const info = el('div');
+      const usernameLine = el('div', undefined, 'profile-username-line');
+      usernameLine.append(el('span', '@' + pr.username, pr.display_name ? 'psub' : 'pname'));
+      if (loggedIn && !pr.is_me) {
+        const actions = el('details', undefined, 'profile-actions');
+        const summary = el('summary', 'Actions â–¾');
+        summary.setAttribute('aria-label', 'Actions for @' + pr.username);
+        const menu = el('div', undefined, 'profile-actions-menu');
+        const viewProfile = el('a', 'View profile');
+        viewProfile.setAttribute('aria-label', 'View profile for @' + pr.username);
+        viewProfile.href = '#/u/' + encodeURIComponent(pr.username);
+        viewProfile.onclick = () => { actions.open = false; };
+        const messageButton = el('button', 'Send message');
+        messageButton.type = 'button';
+        messageButton.setAttribute('aria-label', 'Send message to @' + pr.username);
+        const messageError = el('span', undefined, 'profile-message-error');
+        messageButton.onclick = async () => {
+          messageButton.disabled = true;
+          messageError.textContent = '';
+          try {
+            const response = await post('/api/conversations', {
+              usernames: [pr.username],
+              title: '',
+            });
+            if (!response.ok) {
+              messageError.textContent = response.status === 401
+                ? 'Please log in again.'
+                : 'Could not start a conversation.';
+              return;
+            }
+            const conversation = await response.json();
+            activeConversationId = conversation.id;
+            if (location.hash === '#/inbox') {
+              await showInbox();
+            } else {
+              location.hash = '#/inbox';
+            }
+          } catch {
+            messageError.textContent = 'Could not start a conversation. Check your connection and try again.';
+          } finally {
+            messageButton.disabled = false;
+          }
+        };
+        menu.append(viewProfile, messageButton, messageError);
+        actions.append(summary, menu);
+        const followButton = el('button', pr.followed_by_me ? 'Unfollow' : 'Follow', 'profile-follow-button');
+        followButton.type = 'button';
+        followButton.setAttribute('aria-pressed', String(pr.followed_by_me));
+        const followStatus = el('span', undefined, 'profile-follow-status');
+        followStatus.setAttribute('role', 'status');

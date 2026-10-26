@@ -1,0 +1,12 @@
+﻿848: <div id="communityView" hidden></div>
+870: let communityMap = null;
+1559: function communitySideItem(group, activeId, openCommunity) {
+1572: function communityWorkspace(view, communities, activeId) {
+1625: async function showCommunities() {
+1631: const communities = await response.json();
+1638: async function showCommunityDetail(id) {
+1644: const communities = await listRes.json();
+1696: async function loadCommunityMembers(id, group, panel) {
+1734: async function loadCommunityDiscussion(id, group, panel) {
+3050: const communities = el('a', 'Community', 'inbox-link');
+4299: function initCommunityMap() {

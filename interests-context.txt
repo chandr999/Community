@@ -1,0 +1,205 @@
+﻿
+  static\index.html:1396:        const usersPanel = el('section', undefined, 'admin-panel');
+  static\index.html:1397:        usersPanel.id = 'admin-users';
+  static\index.html:1398:        usersPanel.append(el('h2', 'Accounts and user settings'));
+  static\index.html:1399:        const table = el('table', undefined, 'admin-table');
+  static\index.html:1400:        const head = el('tr');
+  static\index.html:1401:        ['User', 'Contact', 'Role / account', 'Profile data', 'Privacy settings', 'Avatar / cover', 'Cover 
+position', 'Posts', 'Joined', 'Action'].forEach(label => head.append(el('th', label)));
+  static\index.html:1402:        const thead = el('thead'); thead.append(head); table.append(thead);
+  static\index.html:1403:        const tbody = el('tbody');
+  static\index.html:1404:        data.users.forEach(user => {
+  static\index.html:1405:          const row = el('tr');
+> static\index.html:1406:          const profileData = [user.display_name, user.age ? user.age + ' years' : '', user.date_of_birth ? 
+'Birthday ' + user.date_of_birth : '', user.company_name, user.designation, user.location, user.mood, user.interests, 
+user.relationship_status, user.bio]
+  static\index.html:1407:            .filter(Boolean).join(' · ') || '—';
+  static\index.html:1408:          const privacy = [user.profile_visibility, 'messages: ' + user.message_privacy, 'birthday: ' + 
+user.birthday_visibility, 'work: ' + user.work_visibility, 'email: ' + user.email_visibility, 'phone: ' + user.phone_visibility, 'social: ' 
++ user.social_visibility,
+  static\index.html:1409:            'activity: ' + (user.show_activity_status ? 'shown' : 'hidden'),
+  static\index.html:1410:            'visitors: ' + (user.keep_profile_visitors ? 'saved' : 'off'),
+  static\index.html:1411:            'mentions: ' + (user.notify_mentions ? 'on' : 'off')].join(' · ');
+  static\index.html:1412:          row.append(el('td', '@' + user.username + (user.display_name ? ' · ' + user.display_name : '')),
+  static\index.html:1413:            el('td', [user.email ? 'Login: ' + user.email : '', user.contact_email ? 'Contact: ' + 
+user.contact_email + ' (' + user.email_visibility + ')' : '', user.phone_number ? 'Phone: ' + user.phone_number + ' (' + 
+user.phone_visibility + ')' : '', [user.instagram_handle, user.facebook_handle, user.tiktok_handle, 
+user.linkedin_handle].filter(Boolean).length ? 'Social: ' + [user.instagram_handle, user.facebook_handle, user.tiktok_handle, 
+user.linkedin_handle].filter(Boolean).join(', ') + ' (' + user.social_visibility + ')' : ''].filter(Boolean).join(' · ') || '—'),
+  static\index.html:1414:            el('td', (user.is_superadmin ? 'Superadmin' : user.is_admin ? 'Admin' : 'Member') + ' · ' + 
+(user.account_enabled ? 'Enabled' : 'Paused')),
+  static\index.html:1415:            el('td', profileData), el('td', privacy),
+  static\index.html:1416:            el('td', [user.avatar_url ? 'Avatar' : '', user.cover_image_url ? 'Cover' : ''].filter(Boolean).join(' 
+· ') || '—'),
+  static\index.html:1417:            el('td', user.cover_position_x + '% / ' + user.cover_position_y + '% · ' + user.cover_zoom + '%'),
+  static\index.html:1418:            el('td', String(user.post_count)), el('td', new Date(user.created_at).toLocaleDateString()));
+  static\index.html:1419:          const actionCell = el('td');
+  static\index.html:1420:          const toggle = el('button', user.account_enabled ? 'Pause account' : 'Enable account');
+  static\index.html:1421:          toggle.disabled = user.username === currentUsername;
+  static\index.html:1422:          toggle.title = toggle.disabled ? 'Admins cannot pause their own account here.' : '';
+  static\index.html:1423:          toggle.onclick = async () => {
+  static\index.html:1424:            toggle.disabled = true;
+  static\index.html:1425:            const updated = await fetch('/api/admin/users/' + user.id, {
+  static\index.html:1426:              method: 'PUT', headers: { 'Content-Type': 'application/json' },
+  static\index.html:1427:              body: JSON.stringify({ account_enabled: !user.account_enabled }),
+  static\index.html:1428:            });
+  static\index.html:1429:            if (updated.ok) showAdmin();
+  static\index.html:1430:            else { toggle.disabled = false; alert('Could not update this account.'); }
+  static\index.html:1431:          };
+  static\index.html:1432:          actionCell.append(toggle);
+  static\index.html:1433:          if (data.is_superadmin && user.username !== currentUsername) {
+  static\index.html:1434:            const role = el('button', user.is_admin ? 'Remove admin' : 'Make admin');
+  static\index.html:1435:            role.onclick = async () => {
+  static\index.html:1436:              role.disabled = true;
+  static\index.html:2746:        ['Grateful', 'Grateful'],
+  static\index.html:2747:        ['Stressed', 'Stressed'],
+  static\index.html:2748:      ].forEach(([value, label]) => {
+  static\index.html:2749:        const option = el('option', label);
+  static\index.html:2750:        option.value = value;
+  static\index.html:2751:        mood.append(option);
+  static\index.html:2752:      });
+  static\index.html:2753:      mood.value = pr.mood || '';
+  static\index.html:2754:      const ints = el('input'); ints.type = 'text'; ints.maxLength = 200;
+  static\index.html:2755:      ints.placeholder = 'e.g. hiking, photography, chess';
+> static\index.html:2756:      ints.value = pr.interests || '';
+  static\index.html:2757:      const rel = el('select');
+  static\index.html:2758:      ['', 'Single', 'In a relationship', 'Engaged', 'Married', "It's complicated"].forEach(v => {
+  static\index.html:2759:        const o = el('option', v === '' ? 'Prefer not to say' : v);
+  static\index.html:2760:        o.value = v;
+  static\index.html:2761:        rel.append(o);
+  static\index.html:2762:      });
+  static\index.html:2763:      rel.value = pr.relationship_status || '';
+  static\index.html:2764:
+  static\index.html:2765:      f.append(
+  static\index.html:2766:        fieldBox('Display name (max 50 characters)', dn),
+  static\index.html:2767:        fieldBox('About you · rich text', bioWrap),
+  static\index.html:2768:        bioStatus,
+  static\index.html:2769:        fieldBox('Age (13-120)', age),
+  static\index.html:2770:        fieldBox('Location (search worldwide or type your own)', locationWrap),
+  static\index.html:2771:        el('p', 'Location search powered by OpenStreetMap data via Photon.', 'note'),
+  static\index.html:2772:        fieldBox('Birthday (kept private by default)', dob),
+  static\index.html:2773:        fieldBox('Birthday visibility', birthdayVisibility),
+  static\index.html:2774:        fieldBox('Company', company),
+  static\index.html:2775:        fieldBox('Designation', designation),
+  static\index.html:2776:        fieldBox('Work visibility', workVisibility),
+  static\index.html:2777:        fieldBox('Contact email', contactEmail),
+  static\index.html:2778:        fieldBox('Email visibility', emailVisibility),
+  static\index.html:2779:        fieldBox('Phone number', phone),
+  static\index.html:2780:        fieldBox('Phone visibility', phoneVisibility),
+  static\index.html:2781:        fieldBox('Instagram handle', instagram),
+  static\index.html:2782:        fieldBox('Facebook handle', facebook),
+  static\index.html:2783:        fieldBox('TikTok handle', tiktok),
+  static\index.html:2784:        fieldBox('LinkedIn profile name', linkedin),
+  static\index.html:2785:        fieldBox('Social handles visibility', socialVisibility),
+  static\index.html:2786:        fieldBox('Current mood (optional)', mood),
+> static\index.html:2787:        fieldBox('Interests (separate with commas)', ints),
+  static\index.html:2788:        fieldBox('Relationship status', rel),
+  static\index.html:2789:      );
+  static\index.html:2790:
+  static\index.html:2791:      const save = el('button', 'Save profile');
+  static\index.html:2792:      const msg = el('span', undefined, 'hint');
+  static\index.html:2793:      save.onclick = async () => {
+  static\index.html:2794:        if (bioEditor.innerText.trim().length > 500) { msg.textContent = 'Keep your bio under 500 characters.'; 
+return; }
+  static\index.html:2795:        const body = {
+  static\index.html:2796:          display_name: dn.value,
+  static\index.html:2797:          bio: bioEditor.innerHTML,
+  static\index.html:2798:          age: age.value === '' ? null : parseInt(age.value, 10),
+  static\index.html:2799:          date_of_birth: dob.value || null,
+  static\index.html:2800:          birthday_visibility: birthdayVisibility.value,
+  static\index.html:2801:          location: loc.value,
+  static\index.html:2802:          company_name: company.value,
+  static\index.html:2803:          designation: designation.value,
+  static\index.html:2804:          work_visibility: workVisibility.value,
+  static\index.html:2805:          contact_email: contactEmail.value,
+  static\index.html:2806:          email_visibility: emailVisibility.value,
+  static\index.html:2807:          phone_number: phone.value,
+  static\index.html:2808:          phone_visibility: phoneVisibility.value,
+  static\index.html:2809:          instagram_handle: instagram.value.replace(/^@/, ''),
+  static\index.html:2810:          facebook_handle: facebook.value.replace(/^@/, ''),
+  static\index.html:2811:          tiktok_handle: tiktok.value.replace(/^@/, ''),
+  static\index.html:2812:          linkedin_handle: linkedin.value.replace(/^@/, ''),
+  static\index.html:2813:          social_visibility: socialVisibility.value,
+  static\index.html:2814:          mood: mood.value,
+> static\index.html:2815:          interests: ints.value,
+  static\index.html:2816:          relationship_status: rel.value,
+  static\index.html:2817:        };
+  static\index.html:2818:        const r = await fetch('/api/me/profile', {
+  static\index.html:2819:          method: 'PUT',
+  static\index.html:2820:          headers: { 'Content-Type': 'application/json' },
+  static\index.html:2821:          body: JSON.stringify(body),
+  static\index.html:2822:        });
+  static\index.html:2823:        if (r.ok) showProfile(pr.username);
+  static\index.html:2824:        else if (r.status === 400) msg.textContent = 'Please check your birthday, email, phone, social handles and 
+text lengths.';
+  static\index.html:2825:        else if (r.status === 401) msg.textContent = 'Please log in again';
+  static\index.html:2826:        else msg.textContent = 'Something went wrong';
+  static\index.html:2827:      };
+  static\index.html:2828:      const saveRow = el('div', undefined, 'row');
+  static\index.html:2829:      saveRow.append(save, msg);
+  static\index.html:2830:      f.append(saveRow);
+  static\index.html:2831:      return f;
+  static\index.html:2832:    }
+  static\index.html:2833:
+  static\index.html:2834:    // ---------- profile page ----------
+  static\index.html:2835:    async function showProfile(name, editing, dashboardSection = null) {
+  static\index.html:2836:      stopInboxPolling();
+  static\index.html:2837:      document.getElementById('homeView').hidden = true;
+  static\index.html:2838:      document.getElementById('inboxView').hidden = true;
+  static\index.html:2839:      document.getElementById('userSearchView').hidden = true;
+  static\index.html:2840:      document.getElementById('settingsView').hidden = true;
+  static\index.html:2841:      document.getElementById('signupView').hidden = true;
+  static\index.html:2842:      const view = document.getElementById('profileView');
+  static\index.html:2843:      view.hidden = false;
+  static\index.html:2844:      view.textContent = '';
+  static\index.html:2845:
+  static\index.html:3197:        link.target = '_blank'; link.rel = 'noopener noreferrer';
+  static\index.html:3198:        contactDetails.append(link); hasContactDetails = true;
+  static\index.html:3199:      });
+  static\index.html:3200:      if (hasContactDetails) { contactDetails.prepend(el('h3', 'Work & contact')); 
+profileInfo.append(contactDetails); }
+  static\index.html:3201:      if (hasAboutDetails || hasContactDetails) {
+  static\index.html:3202:        const dashboard = view.querySelector('#profileDashboard');
+  static\index.html:3203:        if (dashboard) view.insertBefore(profileInfo, dashboard);
+  static\index.html:3204:        else view.append(profileInfo);
+  static\index.html:3205:      }
+  static\index.html:3206:
+> static\index.html:3207:      if (pr.interests) {
+> static\index.html:3208:        const tags = pr.interests.split(',').map(s => s.trim()).filter(Boolean).slice(0, 15);
+  static\index.html:3209:        if (tags.length) {
+> static\index.html:3210:          const box = el('section', undefined, 'profile-about-card profile-interests');
+> static\index.html:3211:          box.append(el('h2', 'Interests'));
+  static\index.html:3212:          const tagBox = el('div');
+  static\index.html:3213:          tags.forEach(t => tagBox.append(el('span', t, 'chip')));
+  static\index.html:3214:          box.append(tagBox);
+  static\index.html:3215:          view.append(box);
+  static\index.html:3216:        }
+  static\index.html:3217:      }
+  static\index.html:3218:
+  static\index.html:3219:      const gallery = el('section', undefined, 'profile-gallery');
+  static\index.html:3220:      gallery.id = 'profilePosts';
+  static\index.html:3221:      gallery.append(el('h2', 'Posts'));
+  static\index.html:3222:      const postList = el('div', undefined, 'profile-post-list');
+  static\index.html:3223:      if (!pr.posts.length) postList.append(el('p', 'No posts yet.', 'empty'));
+  static\index.html:3224:      pr.posts.forEach(item => {
+  static\index.html:3225:        const card = el('article', undefined, 'profile-post-card');
+  static\index.html:3226:        if (item.media_type === 'video') {
+  static\index.html:3227:          const video = el('video'); video.src = item.image_url; video.controls = true; video.preload = 'metadata'; 
+video.playsInline = true; video.setAttribute('aria-label', 'Video posted by @' + pr.username); card.append(video);
+  static\index.html:3228:        } else {
+  static\index.html:3229:          const image = el('img'); image.src = item.image_url; image.loading = 'lazy'; image.alt = 'Photo posted by 
+@' + pr.username; card.append(image);
+  static\index.html:3230:        }
+  static\index.html:3231:        const copy = el('div', undefined, 'profile-post-copy');
+  static\index.html:3232:        copy.append(el('span', new Date(item.created_at).toLocaleString(), 'profile-post-date'));
+  static\index.html:3233:        if (item.caption) copy.append(el('p', item.caption));
+  static\index.html:3234:        card.append(copy); postList.append(card);
+  static\index.html:3235:      });
+  static\index.html:3236:      gallery.append(postList);
+  static\index.html:3237:      view.append(gallery);
+  static\index.html:3238:      const columns = el('div', undefined, 'profile-content-columns');
+  static\index.html:3239:      const leftColumn = el('div', undefined, 'profile-left-column');
+  static\index.html:3240:      const rightColumn = el('aside', undefined, 'profile-right-column');
+  static\index.html:3241:      Array.from(view.children).forEach(child => {
+
+

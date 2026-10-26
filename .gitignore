@@ -9,3 +9,4 @@ backup-*.sql
 .env*
 =======
 >>>>>>> cbb8b8f3f3b06936448b1f518ecd21b661662cc0
+backup-*.sql

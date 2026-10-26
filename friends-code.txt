@@ -1,0 +1,95 @@
+﻿
+    function hideSocialViews() {
+      ['homeView', 'profileView', 'inboxView', 'friendsView', 'communityView', 'userSearchView', 'settingsView', 'signupView', 'adminView']
+        .forEach(id => { const node = document.getElementById(id); if (node) node.hidden = true; });
+      document.getElementById('appPausedView').hidden = true;
+    }
+
+    async function showFriends() {
+      stopInboxPolling(); hideSocialViews();
+      const view = document.getElementById('friendsView'); view.hidden = false; view.replaceChildren();
+      view.append(el('h1', 'Friends', 'inbox-title'));
+      if (!loggedIn) { view.append(el('p', 'Log in to see the people you follow.', 'empty')); return; }
+      const response = await fetch('/api/me/friends');
+      if (!response.ok) { view.append(el('p', 'Friends could not be loaded. Please try again.', 'empty')); return; }
+      const people = await response.json();
+      const following = el('section'); following.append(el('h2', `Following Â· ${people.length}`));
+      if (!people.length) following.append(el('p', 'People you follow will appear here.', 'empty'));
+      const grid = el('div', undefined, 'social-grid');
+      people.forEach(person => {
+        const card = el('article', undefined, 'social-card');
+        const row = el('div', undefined, 'social-person'); row.append(avatarEl(person.avatar_url), profileLink(person.username, '@' + person.username)); card.append(row);
+        const actions = el('div', undefined, 'social-card-actions');
+        const favorite = el('button', person.is_favorite ? 'â˜… Favorited' : 'â˜† Add to favorites');
+        favorite.onclick = async () => { const r = await fetch('/api/users/' + encodeURIComponent(person.username) + '/favorite', { method: person.is_favorite ? 'DELETE' : 'POST' }); if (r.ok) showFriends(); };
+        const unfollow = el('button', 'Unfollow');
+        unfollow.onclick = async () => { if (window.confirm(`Unfollow @${person.username}?`)) { const r = await fetch('/api/users/' + encodeURIComponent(person.username) + '/follow', { method: 'DELETE' }); if (r.ok) showFriends(); } };
+        actions.append(favorite, unfollow); card.append(actions); grid.append(card);
+      });
+      following.append(grid); view.append(following);
+      const favoriteSection = el('section'); favoriteSection.append(el('h2', 'Favorites'));
+      const favorites = people.filter(p => p.is_favorite);
+      if (!favorites.length) favoriteSection.append(el('p', 'Mark people as favorites for quick access.', 'empty'));
+      const favGrid = el('div', undefined, 'social-grid');
+      favorites.forEach(person => { const card = el('article', undefined, 'social-card'); const row = el('div', undefined, 'social-person'); row.append(avatarEl(person.avatar_url), profileLink(person.username, '@' + person.username)); card.append(row); favGrid.append(card); });
+      favoriteSection.append(favGrid); view.append(favoriteSection);
+    }
+
+    function communitySideItem(group, activeId, openCommunity) {
+      const button = el('button', undefined, 'community-side-item' + (Number(activeId) === group.id ? ' active' : ''));
+      button.type = 'button';
+      const mark = group.image_url ? el('img') : el('span', group.name.slice(0, 1).toUpperCase(), 'community-side-mark');
+      if (group.image_url) { mark.src = group.image_url; mark.alt = ''; }
+      const copy = el('span', undefined, 'community-side-copy');
+      copy.append(el('strong', group.name), el('span', group.is_disabled ? 'Access paused' : `${group.member_count} members`));
+      button.append(mark, copy);
+      button.disabled = group.is_disabled;
+      button.onclick = () => openCommunity(group);
+      return button;
+    }
+
+    function communityWorkspace(view, communities, activeId) {
+      const workspace = el('div', undefined, 'community-workspace');
+      const sidebar = el('aside', undefined, 'community-sidebar');
+      const sidebarHead = el('div', undefined, 'community-sidebar-head');
+      sidebarHead.append(el('h2', 'Your spaces'));
+      const create = el('button', '+ Create'); create.type = 'button';
+      sidebarHead.append(create); sidebar.append(sidebarHead);
+      const createForm = el('form', undefined, 'community-form'); createForm.hidden = true;
+      const name = el('input'); name.placeholder = 'Community name'; name.maxLength = 50; name.required = true;
+      const description = el('textarea'); description.placeholder = 'What brings this community together?'; description.maxLength = 500;
+      const image = el('input'); image.type = 'file'; image.accept = 'image/jpeg,image/png,image/webp,image/gif';
+      const imageLabel = el('label', 'Community image Â· optional', 'community-create-image'); imageLabel.append(image);
+      const createStatus = el('p', '', 'community-note'); const submit = el('button', 'Create community'); submit.type = 'submit';
+      createForm.append(name, description, imageLabel, submit, createStatus);
+      create.onclick = () => { createForm.hidden = !createForm.hidden; };
+      createForm.onsubmit = async event => {
+        event.preventDefault(); submit.disabled = true; createStatus.textContent = 'Creatingâ€¦';
+        try {
+          const response = await post('/api/communities', { name: name.value, description: description.value });
+          if (!response.ok) { createStatus.textContent = response.status === 409 ? 'That name is already in use.' : 'Could not create the community.'; return; }
+          const created = await response.json();
+          if (image.files && image.files[0]) {
+            const form = new FormData(); form.append('image', image.files[0]);
+            const uploaded = await fetch(`/api/communities/${created.id}/image`, { method: 'POST', body: form });
+            if (!uploaded.ok) alert(uploaded.status === 413 ? 'Community created, but its image exceeds 5 MB.' : 'Community created, but its image could not be uploaded. You can add it from the community header.');
+          }
+          location.hash = '#/community/' + created.id;
+        } catch (error) { createStatus.textContent = 'Could not create the community. Check your connection and try again.'; }
+        finally { submit.disabled = false; }
+      };
+      sidebar.append(createForm);
+      const joined = communities.filter(group => group.is_member || group.is_disabled);
+      const mine = el('section', undefined, 'community-sidebar-section');
+      mine.append(el('h3', 'Joined'));
+      const joinedList = el('div', undefined, 'community-side-list');
+      if (!joined.length) joinedList.append(el('p', 'Your joined communities will appear here.', 'community-note'));
+      joined.forEach(group => joinedList.append(communitySideItem(group, activeId, item => { if (!item.is_disabled) location.hash = '#/community/' + item.id; })));
+      mine.append(joinedList); sidebar.append(mine);
+      const discover = el('section', undefined, 'community-sidebar-section'); discover.append(el('h3', 'Discover'));
+      const discoverList = el('div', undefined, 'community-side-list');
+      const available = communities.filter(group => !group.is_member && !group.is_disabled);
+      if (!available.length) discoverList.append(el('p', 'You are up to date.', 'community-note'));
+      available.forEach(group => discoverList.append(communitySideItem(group, activeId, async item => {
+        const response = await post(`/api/communities/${item.id}/join`);
+        if (response.ok) location.hash = '#/community/' + item.id;

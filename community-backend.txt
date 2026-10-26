@@ -1,0 +1,331 @@
+﻿struct CommunitySummary {
+    id: i32,
+    name: String,
+    description: String,
+    image_url: Option<String>,
+    owner: Option<String>,
+    is_member: bool,
+    is_disabled: bool,
+    is_owner: bool,
+    is_admin: bool,
+    member_count: i64,
+    created_at: String,
+}
+
+struct CommunityPost {
+    id: i64,
+    username: String,
+    avatar_url: Option<String>,
+    title: String,
+    body: String,
+    created_at: String,
+    comment_count: i64,
+    can_delete: bool,
+    is_html: bool,
+    edited: bool,
+    can_edit: bool,
+}
+
+struct CommunityComment {
+    id: i64,
+    username: String,
+    body: String,
+    created_at: String,
+    can_delete: bool,
+}
+
+struct CommunityMember {
+    id: i32,
+    username: String,
+    is_owner: bool,
+    is_admin: bool,
+    enabled: bool,
+}
+
+struct NewCommunity {
+    name: String,
+    description: Option<String>,
+}
+
+struct AddCommunityMember {
+    username: String,
+}
+
+struct CommunityMemberStatus {
+    enabled: bool,
+}
+
+struct CommunityMemberAdmin {
+    is_admin: bool,
+}
+
+struct CommunityPostInput {
+    title: String,
+    body: String,
+}
+
+struct CommunityCommentInput {
+    body: String,
+}
+
+async fn list_community_members(
+    State(pool): State<PgPool>, headers: HeaderMap, Path(community_id): Path<i32>,
+) -> Result<Json<Vec<CommunityMember>>, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let is_member: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$2 AND is_enabled)")
+        .bind(community_id).bind(user_id).fetch_one(&pool).await.map_err(|e| {
+            eprintln!("community membership check failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if !is_member { return Err(StatusCode::FORBIDDEN); }
+    let members = sqlx::query_as::<_, CommunityMember>(
+        "SELECT u.id, u.username, COALESCE(u.id = c.created_by, FALSE) AS is_owner, cm.is_admin, cm.is_enabled AS enabled FROM community_members cm JOIN users u ON u.id=cm.user_id JOIN communities c ON c.id=cm.community_id WHERE cm.community_id=$1 ORDER BY is_owner DESC, cm.is_admin DESC, u.username",
+    ).bind(community_id).fetch_all(&pool).await.map_err(|e| {
+        eprintln!("community members lookup failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(members))
+}
+
+async fn add_community_member(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(community_id): Path<i32>,
+    Json(input): Json<AddCommunityMember>,
+) -> Result<StatusCode, StatusCode> {
+    let owner_id = current_user_id(&pool, &headers).await?;
+    let can_manage: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM communities c WHERE c.id=$1 AND (c.created_by=$2 OR EXISTS(SELECT 1 FROM community_members m WHERE m.community_id=c.id AND m.user_id=$2 AND m.is_enabled AND m.is_admin)))")
+        .bind(community_id).bind(owner_id).fetch_one(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !can_manage { return Err(StatusCode::FORBIDDEN); }
+    let username = input.username.trim();
+    if username.is_empty() || username.chars().count() > 30 { return Err(StatusCode::BAD_REQUEST); }
+    let member_id: Option<i32> = sqlx::query_scalar("SELECT id FROM users WHERE lower(username)=lower($1) AND account_enabled")
+        .bind(username).fetch_optional(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let Some(member_id) = member_id else { return Err(StatusCode::NOT_FOUND); };
+    sqlx::query("INSERT INTO community_members (community_id,user_id,is_enabled) VALUES ($1,$2,TRUE) ON CONFLICT (community_id,user_id) DO UPDATE SET is_enabled=TRUE")
+        .bind(community_id).bind(member_id).execute(&pool).await.map_err(|e| {
+            eprintln!("community member add failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn set_community_member_status(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path((community_id, member_id)): Path<(i32, i32)>,
+    Json(input): Json<CommunityMemberStatus>,
+) -> Result<StatusCode, StatusCode> {
+    let owner_id = current_user_id(&pool, &headers).await?;
+    let result = sqlx::query("UPDATE community_members cm SET is_enabled=$1 FROM communities c WHERE cm.community_id=c.id AND cm.community_id=$2 AND cm.user_id=$3 AND cm.user_id<>c.created_by AND NOT cm.is_admin AND (c.created_by=$4 OR EXISTS(SELECT 1 FROM community_members actor WHERE actor.community_id=c.id AND actor.user_id=$4 AND actor.is_enabled AND actor.is_admin))")
+        .bind(input.enabled).bind(community_id).bind(member_id).bind(owner_id).execute(&pool).await.map_err(|e| {
+            eprintln!("community member status update failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if result.rows_affected() == 0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn remove_community_member(
+    State(pool): State<PgPool>, headers: HeaderMap, Path((community_id, member_id)): Path<(i32, i32)>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let result = sqlx::query("DELETE FROM community_members cm USING communities c WHERE cm.community_id=c.id AND cm.community_id=$1 AND cm.user_id=$2 AND cm.user_id<>c.created_by AND NOT cm.is_admin AND (c.created_by=$3 OR EXISTS(SELECT 1 FROM community_members actor WHERE actor.community_id=c.id AND actor.user_id=$3 AND actor.is_enabled AND actor.is_admin))")
+        .bind(community_id).bind(member_id).bind(user_id).execute(&pool).await.map_err(|e| {
+            eprintln!("community member removal failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if result.rows_affected() == 0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn set_community_member_admin(
+    State(pool): State<PgPool>, headers: HeaderMap, Path((community_id, member_id)): Path<(i32, i32)>, Json(input): Json<CommunityMemberAdmin>,
+) -> Result<StatusCode, StatusCode> {
+    let owner_id = current_user_id(&pool, &headers).await?;
+    let result = sqlx::query("UPDATE community_members cm SET is_admin=$1 FROM communities c WHERE cm.community_id=c.id AND cm.community_id=$2 AND cm.user_id=$3 AND cm.user_id<>c.created_by AND c.created_by=$4")
+        .bind(input.is_admin).bind(community_id).bind(member_id).bind(owner_id).execute(&pool).await.map_err(|e| {
+            eprintln!("community moderator role update failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if result.rows_affected()==0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn list_community_posts(
+    State(pool): State<PgPool>, headers: HeaderMap, Path(community_id): Path<i32>,
+) -> Result<Json<Vec<CommunityPost>>, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let member: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$2 AND is_enabled)")
+        .bind(community_id).bind(user_id).fetch_one(&pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !member { return Err(StatusCode::FORBIDDEN); }
+    let posts = sqlx::query_as::<_, CommunityPost>(
+        r#"SELECT p.id, u.username, u.avatar_url, p.title, p.body, p.is_html, (p.edited_at IS NOT NULL) AS edited, (p.user_id=$2) AS can_edit,
+                  to_char(p.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
+                  (SELECT COUNT(*) FROM community_comments cc WHERE cc.post_id=p.id) AS comment_count,
+                  (p.user_id=$2 OR c.created_by=$2 OR EXISTS(SELECT 1 FROM community_members mod WHERE mod.community_id=c.id AND mod.user_id=$2 AND mod.is_enabled AND mod.is_admin)) AS can_delete
+           FROM community_posts p JOIN users u ON u.id=p.user_id JOIN communities c ON c.id=p.community_id
+           WHERE p.community_id=$1 ORDER BY p.created_at DESC, p.id DESC LIMIT 200"#,
+    ).bind(community_id).bind(user_id).fetch_all(&pool).await.map_err(|e| {
+        eprintln!("community posts lookup failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(posts))
+}
+
+async fn create_community_post(
+    State(pool): State<PgPool>, headers: HeaderMap, Path(community_id): Path<i32>, Json(input): Json<CommunityPostInput>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let title=input.title.trim(); let cleaned=clean_rich_text(input.body.trim()); let body=cleaned.as_str();
+    if title.is_empty() || title.chars().count()>120 || rich_is_blank(body) || body.chars().count()>20000 { return Err(StatusCode::BAD_REQUEST); }
+    let result=sqlx::query("INSERT INTO community_posts(community_id,user_id,title,body,is_html) SELECT $1,$2,$3,$4,TRUE WHERE EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$2 AND is_enabled)")
+        .bind(community_id).bind(user_id).bind(title).bind(body).execute(&pool).await.map_err(|e| { eprintln!("community post create failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?;
+    if result.rows_affected()==0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::CREATED)
+}
+
+async fn delete_community_post(
+    State(pool): State<PgPool>, headers: HeaderMap, Path((community_id, post_id)): Path<(i32, i64)>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id=current_user_id(&pool,&headers).await?;
+    let result=sqlx::query("DELETE FROM community_posts p USING communities c WHERE p.community_id=c.id AND p.community_id=$1 AND p.id=$2 AND (p.user_id=$3 OR c.created_by=$3 OR EXISTS(SELECT 1 FROM community_members mod WHERE mod.community_id=c.id AND mod.user_id=$3 AND mod.is_enabled AND mod.is_admin))")
+        .bind(community_id).bind(post_id).bind(user_id).execute(&pool).await.map_err(|e| { eprintln!("community post delete failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?;
+    if result.rows_affected()==0 { return Err(StatusCode::FORBIDDEN); }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+struct CommunityPostEdit {
+    title: String,
+    body: String,
+}
+
+struct CommunityPostReport {
+    reason: String,
+    details: Option<String>,
+}
+
+struct ActiveCommunityMember {
+    id: i32,
+    username: String,
+    avatar_url: Option<String>,
+}
+
+async fn edit_community_post(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path((community_id, post_id)): Path<(i32, i64)>,
+    Json(input): Json<CommunityPostEdit>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let title = input.title.trim();
+    let body = clean_rich_text(input.body.trim());
+    if title.is_empty() || title.chars().count() > 120 || rich_is_blank(&body) || body.chars().count() > 20000 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let result = sqlx::query(
+        "UPDATE community_posts SET title=$1, body=$2, is_html=TRUE, edited_at=now()
+         WHERE id=$3 AND community_id=$4 AND user_id=$5
+           AND EXISTS(SELECT 1 FROM community_members WHERE community_id=$4 AND user_id=$5 AND is_enabled)",
+    )
+    .bind(title)
+    .bind(&body)
+    .bind(post_id)
+    .bind(community_id)
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("community post edit failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn report_community_post(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path((community_id, post_id)): Path<(i32, i64)>,
+    Json(input): Json<CommunityPostReport>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    if !["spam", "harassment", "hate", "nudity", "violence", "scam", "other"].contains(&input.reason.as_str()) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let details = input.details.unwrap_or_default();
+    let details = details.trim();
+    if details.chars().count() > 500 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let allowed: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM community_posts p
+           JOIN community_members m ON m.community_id = p.community_id AND m.user_id = $3 AND m.is_enabled
+           WHERE p.id = $2 AND p.community_id = $1 AND p.user_id <> $3)",
+    )
+    .bind(community_id)
+    .bind(post_id)
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("community report check failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    if !allowed {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    let result = sqlx::query(
+        "INSERT INTO community_post_reports (community_id, post_id, reporter_id, reason, details)
+         VALUES ($1, $2, $3, $4, $5) ON CONFLICT (post_id, reporter_id) DO NOTHING",
+    )
+    .bind(community_id)
+    .bind(post_id)
+    .bind(user_id)
+    .bind(&input.reason)
+    .bind(details)
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("community report failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::CONFLICT);
+    }
+    Ok(StatusCode::CREATED)
+}
+
+async fn list_active_community_members(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(community_id): Path<i32>,
+) -> Result<Json<Vec<ActiveCommunityMember>>, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let is_member: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$2 AND is_enabled)",
+    )
+    .bind(community_id)
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("community active membership check failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    if !is_member {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    let rows = sqlx::query_as::<_, ActiveCommunityMember>(
+        "SELECT u.id, u.username, u.avatar_url
+         FROM community_members cm JOIN users u ON u.id = cm.user_id
+         WHERE cm.community_id = $1 AND cm.is_enabled AND u.account_enabled AND u.show_activity_status
+           AND u.last_active_at > now() - interval '5 minutes'
+         ORDER BY u.last_active_at DESC LIMIT 12",
+    )
+    .bind(community_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("community active members failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(rows))
+}
+
