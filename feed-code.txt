@@ -1,0 +1,330 @@
+﻿    async function loadFeed() {
+      const url = scope === 'following' ? '/api/feed?scope=following' : '/api/feed';
+      const posts = await (await fetch(url)).json();
+      const feed = document.getElementById('feed');
+      feed.textContent = '';
+
+      if (posts.length === 0) {
+        feed.append(el('p', scope === 'following'
+          ? 'Nothing here yet. Click a username to visit a profile and follow them.'
+          : 'No posts yet.', 'empty'));
+        return;
+      }
+
+      posts.forEach(p => {
+        const card = el('div', undefined, 'card');
+        const user = el('div', undefined, 'user');
+        const author = el('span', undefined, 'post-author');
+        author.append(userLink(p.user));
+        const icon = moodIcon(p.mood);
+        if (icon) {
+          const mood = el('span', icon, 'post-author-mood');
+          mood.title = p.mood;
+          mood.setAttribute('role', 'img');
+          mood.setAttribute('aria-label', 'Mood: ' + p.mood);
+          author.append(mood);
+        }
+        user.append(avatarEl(p.avatar_url), author);
+        if (loggedIn) {
+          const userControls = el('div', undefined, 'post-user-controls');
+          const userActions = el('details', undefined, 'post-user-actions');
+          const userActionsLabel = el('summary', 'Actions');
+          userActionsLabel.setAttribute('aria-label', 'Post actions for @' + p.user);
+          const userMenu = el('div', undefined, 'post-user-menu');
+          const actionStatus = el('p', undefined, 'report-status');
+
+          if (p.user !== currentUsername) {
+            const followButton = el('button', p.followed_by_me ? 'Unfollow' : 'Follow', 'post-follow-button');
+            followButton.type = 'button';
+            followButton.setAttribute('aria-pressed', String(p.followed_by_me));
+            const followStatus = el('span', undefined, 'post-follow-status');
+            followStatus.setAttribute('role', 'status');
+            followButton.onclick = async () => {
+              followButton.disabled = true;
+              followStatus.textContent = '';
+              try {
+                const response = await fetch('/api/users/' + encodeURIComponent(p.user) + '/follow', {
+                  method: p.followed_by_me ? 'DELETE' : 'POST',
+                });
+                if (!response.ok) throw new Error('Follow request failed: ' + response.status);
+                p.followed_by_me = !p.followed_by_me;
+                window.followSync(p.user, p.followed_by_me);
+                followButton.textContent = p.followed_by_me ? 'Unfollow' : 'Follow';
+                followButton.setAttribute('aria-pressed', String(p.followed_by_me));
+                followStatus.textContent = p.followed_by_me ? 'Following @' + p.user : 'Unfollowed @' + p.user;
+              } catch (error) {
+                console.error('Could not update follow status:', error);
+                followStatus.textContent = 'Follow could not be updated (' + error.message + ').';
+              } finally {
+                followButton.disabled = false;
+              }
+            };
+            userControls.append(followButton, followStatus);
+            window.followRegistry = window.followRegistry || {};
+            window.followSync = window.followSync || ((user, state) => {
+              const list = (window.followRegistry[user] || []).filter(x => x.btn.isConnected);
+              window.followRegistry[user] = list;
+              list.forEach(x => x.fn(state));
+            });
+            (window.followRegistry[p.user] = window.followRegistry[p.user] || []).push({
+              btn: followButton,
+              fn: state => {
+                p.followed_by_me = state;
+                followButton.textContent = state ? 'Unfollow' : 'Follow';
+                followButton.setAttribute('aria-pressed', String(state));
+              },
+            });
+
+            const favoriteButton = el('button', p.favorited_by_me ? 'Remove from favorites' : 'Add to favorites');
+            favoriteButton.type = 'button';
+            favoriteButton.onclick = async () => {
+              favoriteButton.disabled = true;
+              actionStatus.textContent = '';
+              try {
+                const response = await fetch('/api/users/' + encodeURIComponent(p.user) + '/favorite', {
+                  method: p.favorited_by_me ? 'DELETE' : 'POST',
+                });
+                if (!response.ok) throw new Error('Favorite request failed: ' + response.status);
+                p.favorited_by_me = !p.favorited_by_me;
+                favoriteButton.textContent = p.favorited_by_me ? 'Remove from favorites' : 'Add to favorites';
+                actionStatus.textContent = p.favorited_by_me
+                  ? '@' + p.user + ' added to favorites'
+                  : '@' + p.user + ' removed from favorites';
+              } catch (error) {
+                console.error('Could not update favorite status:', error);
+                actionStatus.textContent = 'Favorite could not be updated. Please try again.';
+              } finally {
+                favoriteButton.disabled = false;
+              }
+            };
+            userMenu.append(favoriteButton);
+          }
+
+          const reportButton = el('button', 'Report post');
+          reportButton.type = 'button';
+          const reportForm = el('form', undefined, 'report-form');
+          reportForm.hidden = true;
+          const reasonLabel = el('label', 'Why are you reporting this post?');
+          const reasonSelect = el('select');
+          [
+            ['spam', 'Spam or misleading'],
+            ['harassment', 'Harassment or bullying'],
+            ['hate', 'Hateful content'],
+            ['nudity', 'Nudity or sexual content'],
+            ['violence', 'Violence or dangerous content'],
+            ['scam', 'Scam or fraud'],
+            ['other', 'Something else'],
+          ].forEach(([value, label]) => {
+            const option = el('option', label);
+            option.value = value;
+            reasonSelect.append(option);
+          });
+          reasonLabel.append(reasonSelect);
+          const detailsLabel = el('label', 'Details (optional, up to 500 characters)');
+          const reportDetails = el('textarea');
+          reportDetails.maxLength = 500;
+          detailsLabel.append(reportDetails);
+          const reportSubmit = el('button', 'Submit report');
+          reportSubmit.type = 'submit';
+          const reportStatus = el('p', undefined, 'report-status');
+          let reportWasSubmitted = false;
+          reportForm.append(reasonLabel, detailsLabel, reportSubmit, reportStatus);
+          reportButton.onclick = () => {
+            reportForm.hidden = !reportForm.hidden;
+            reportStatus.textContent = '';
+          };
+          reportForm.onsubmit = async event => {
+            event.preventDefault();
+            reportSubmit.disabled = true;
+            reportStatus.textContent = 'Submitting report...';
+            try {
+              const response = await post('/api/posts/' + p.id + '/report', {
+                reason: reasonSelect.value,
+                details: reportDetails.value,
+              });
+              if (response.status === 409) {
+                reportStatus.textContent = 'You have already reported this post.';
+              } else if (response.status === 401) {
+                reportStatus.textContent = 'Please log in again.';
+              } else if (response.status === 400) {
+                reportStatus.textContent = 'Please choose a valid reason and keep details under 500 characters.';
+              } else if (!response.ok) {
+                throw new Error('Post report failed: ' + response.status);
+              } else {
+                reportStatus.textContent = 'Report submitted. Thank you.';
+                reportWasSubmitted = true;
+              }
+            } catch (error) {
+              console.error('Could not submit post report:', error);
+              reportStatus.textContent = 'Could not submit report. Please try again.';
+            } finally {
+              reportSubmit.disabled = reportWasSubmitted;
+            }
+          };
+          userMenu.append(reportButton, reportForm, actionStatus);
+          userActions.append(userActionsLabel, userMenu);
+          userControls.append(userActions);
+          user.append(userControls);
+        }
+
+        let media;
+        if (p.media_type === 'video') {
+          media = el('video', undefined, 'photo');
+          media.src = p.image_url;
+          media.controls = true;
+          media.preload = 'metadata';
+          media.playsInline = true;
+        } else {
+          media = el('img', undefined, 'photo');
+          media.src = p.image_url;
+          media.loading = 'lazy';
+          media.alt = 'Photo posted by @' + p.user;
+        }
+
+        const mediaStage = el('div', undefined, 'media-stage');
+        const reactions = el('div', undefined, 'media-reactions');
+        const heart = el('button', undefined, 'like');
+        heart.type = 'button';
+        heart.setAttribute('aria-label', 'Like post');
+        const dislike = el('button', undefined, 'dislike');
+        dislike.type = 'button';
+        const thumb = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        thumb.setAttribute('viewBox', '0 0 24 24');
+        thumb.setAttribute('transform', 'rotate(180 12 12)');
+        thumb.setAttribute('aria-hidden', 'true');
+        const thumbPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        thumbPath.setAttribute('d', 'M1 21h4V9H1v12Zm22-11a2 2 0 0 0-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10a2 2 0 0 0 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.48.14-.73v-2Z');
+        thumb.append(thumbPath);
+        dislike.append(thumb);
+        dislike.setAttribute('aria-label', 'Dislike post');
+        const hate = el('button', 'Hate', 'hate');
+        hate.type = 'button';
+        hate.setAttribute('aria-label', 'Hate post');
+        heart.title = 'Like';
+        dislike.title = 'Dislike';
+        hate.title = 'Hate';
+        [heart, dislike, hate].forEach(button => {
+          button.addEventListener('click', event => event.stopPropagation());
+        });
+        const reshare = el('button', undefined, 'reshare');
+        reshare.type = 'button';
+        const voteCount = el('span', undefined, 'vote-count');
+        const hint = el('span', undefined, 'hint');
+        reactions.append(heart, dislike, hate);
+        mediaStage.append(media, reactions);
+        const actions = el('div', undefined, 'actions');
+        actions.append(voteCount);
+        if (loggedIn) actions.append(reshare);
+        actions.append(hint);
+
+        const meta = el('div', undefined, 'meta');
+        meta.append(userLink(p.user), document.createTextNode(' ' + p.caption));
+        if (p.original_author) {
+          const reshareLabel = el('div', undefined, 'post-tags');
+          reshareLabel.append(
+            document.createTextNode('Reshared from '),
+            profileLink(p.original_author, '@' + p.original_author),
+          );
+          meta.append(reshareLabel);
+        }
+        if (p.tags && p.tags.length) {
+          const tagLine = el('div', undefined, 'post-tags');
+          tagLine.append(el('span', 'With '));
+          p.tags.forEach((name, index) => {
+            if (index) tagLine.append(document.createTextNode(', '));
+            tagLine.append(profileLink(name, '@' + name));
+          });
+          meta.append(tagLine);
+        }
+
+        function paint() {
+          heart.textContent = p.liked_by_me ? 'â™¥' : 'â™¡';
+          heart.style.color = p.liked_by_me ? '#e0245e' : '';
+          heart.setAttribute('aria-pressed', String(p.liked_by_me));
+          dislike.classList.toggle('selected', p.disliked_by_me);
+          dislike.setAttribute('aria-pressed', String(p.disliked_by_me));
+          dislike.setAttribute('aria-label', p.disliked_by_me ? 'Remove dislike' : 'Dislike post');
+          hate.classList.toggle('selected', p.hated_by_me);
+          hate.setAttribute('aria-pressed', String(p.hated_by_me));
+          hate.setAttribute('aria-label', p.hated_by_me ? 'Remove hate' : 'Hate post');
+          voteCount.textContent = likesText(p.likes) + ' Â· ' + p.dislikes +
+            (p.dislikes === 1 ? ' dislike' : ' dislikes') + ' Â· ' + p.hates +
+            (p.hates === 1 ? ' hate' : ' hates') + ' Â· ' + p.reshares +
+            (p.reshares === 1 ? ' reshare' : ' reshares');
+          if (loggedIn) {
+            reshare.textContent = p.reshared_by_me ? 'Undo reshare' : 'â†— Reshare';
+            reshare.disabled = false;
+            reshare.setAttribute('aria-label', p.reshared_by_me ? 'Undo reshare' : 'Reshare post');
+          }
+        }
+        paint();
+
+        heart.onclick = async () => {
+          if (!loggedIn) { hint.textContent = 'Log in to like posts'; return; }
+          hint.textContent = '';
+          try {
+            const response = await fetch('/api/posts/' + p.id + '/like', {
+              method: p.liked_by_me ? 'DELETE' : 'POST',
+            });
+            if (!response.ok) throw new Error('Like request failed: ' + response.status);
+            if (p.liked_by_me) {
+              p.likes -= 1;
+              p.liked_by_me = false;
+            } else {
+              if (p.disliked_by_me) p.dislikes -= 1;
+              p.disliked_by_me = false;
+              p.likes += 1;
+              p.liked_by_me = true;
+            }
+            paint();
+          } catch (error) {
+            console.error('Could not update like:', error);
+            hint.textContent = 'Like could not be updated. Please try again.';
+          }
+        };
+
+        dislike.onclick = async () => {
+          if (!loggedIn) { hint.textContent = 'Log in to react to posts'; return; }
+          hint.textContent = '';
+          try {
+            const response = await fetch('/api/posts/' + p.id + '/dislike', {
+              method: p.disliked_by_me ? 'DELETE' : 'POST',
+            });
+            if (!response.ok) throw new Error('Dislike request failed: ' + response.status);
+            if (p.disliked_by_me) {
+              p.dislikes -= 1;
+              p.disliked_by_me = false;
+            } else {
+              if (p.liked_by_me) p.likes -= 1;
+              p.liked_by_me = false;
+              p.dislikes += 1;
+              p.disliked_by_me = true;
+            }
+            paint();
+          } catch (error) {
+            console.error('Could not update dislike:', error);
+            hint.textContent = 'Dislike could not be updated. Please try again.';
+          }
+        };
+
+        hate.onclick = async () => {
+          if (!loggedIn) { hint.textContent = 'Log in to react to posts'; return; }
+          hint.textContent = '';
+          try {
+            const response = await fetch('/api/posts/' + p.id + '/hate', {
+              method: p.hated_by_me ? 'DELETE' : 'POST',
+            });
+            if (!response.ok) throw new Error('Hate request failed: ' + response.status);
+            p.hates += p.hated_by_me ? -1 : 1;
+            p.hated_by_me = !p.hated_by_me;
+            paint();
+          } catch (error) {
+            console.error('Could not update hate reaction:', error);
+            hint.textContent = 'Hate reaction could not be updated. Please try again.';
+          }
+        };
+
+        reshare.onclick = async () => {
+          if (!loggedIn) { hint.textContent = 'Log in to reshare posts'; return; }
+          reshare.disabled = true;
+          const undo = p.reshared_by_me;

@@ -1,0 +1,145 @@
+﻿
+> static\index.html:1006:    function el(tag, text, cls) {
+  static\index.html:1007:      const e = document.createElement(tag);
+  static\index.html:1008:      if (text !== undefined) e.textContent = text;
+  static\index.html:1009:      if (cls) e.className = cls;
+  static\index.html:1010:      return e;
+  static\index.html:1011:    }
+  static\index.html:1012:
+  static\index.html:1013:    document.addEventListener('click', event => {
+  static\index.html:1014:      const target = event.target instanceof Element ? event.target : null;
+  static\index.html:1015:      if (!target) return;
+  static\index.html:1016:      document.querySelectorAll('.chat-pane').forEach(chat => {
+  static\index.html:1017:        const emojiTray = chat.querySelector('.emoji-tray');
+  static\index.html:1018:        const emojiButton = chat.querySelector('.emoji-trigger');
+  static\index.html:1019:        if (emojiTray && !emojiTray.hidden && !emojiTray.contains(target) && !emojiButton?.contains(target)) {
+  static\index.html:1020:          emojiTray.hidden = true;
+  static\index.html:1021:        }
+  static\index.html:1022:        const mediaPicker = chat.querySelector('.chat-media-picker');
+> static\index.html:1031:    async function post(path, body) {
+  static\index.html:1032:      return fetch(path, {
+  static\index.html:1033:        method: 'POST',
+  static\index.html:1034:        headers: { 'Content-Type': 'application/json' },
+  static\index.html:1035:        body: body ? JSON.stringify(body) : undefined,
+  static\index.html:1036:      });
+  static\index.html:1037:    }
+  static\index.html:1038:
+  static\index.html:1039:    function likesText(n) {
+  static\index.html:1040:      return n + (n === 1 ? ' like' : ' likes');
+  static\index.html:1041:    }
+  static\index.html:1042:
+> static\index.html:1043:    function userLink(name) {
+  static\index.html:1044:      return profileLink(name, name);
+  static\index.html:1045:    }
+  static\index.html:1046:
+> static\index.html:1047:    function profileLink(username, label) {
+  static\index.html:1048:      const a = el('a', label, 'ulink');
+  static\index.html:1049:      a.href = '#/u/' + encodeURIComponent(username.replace(/^@/, ''));
+  static\index.html:1050:      return a;
+  static\index.html:1051:    }
+  static\index.html:1052:
+  static\index.html:1053:    // A round profile picture, or a grey circle if the user has none.
+> static\index.html:1054:    function avatarEl(url, big) {
+  static\index.html:1055:      let a;
+  static\index.html:1056:      if (url) { a = el('img'); a.src = url; a.alt = ''; }
+  static\index.html:1057:      else { a = el('div'); }
+  static\index.html:1058:      a.className = 'avatar' + (big ? ' big' : '');
+  static\index.html:1059:      return a;
+  static\index.html:1060:    }
+  static\index.html:1061:
+> static\index.html:1062:    function moodIcon(mood) {
+  static\index.html:1063:      return {
+  static\index.html:1064:        Bored: '😐',
+  static\index.html:1065:        Romantic: '💕',
+  static\index.html:1066:        Angry: '😠',
+  static\index.html:1067:        Sad: '😢',
+  static\index.html:1068:        Happy: '😊',
+  static\index.html:1069:        Calm: '😌',
+  static\index.html:1070:        Excited: '🤩',
+  static\index.html:1071:        Playful: '😜',
+  static\index.html:1072:        Lonely: '🥺',
+  static\index.html:1073:        Grateful: '🙏',
+  static\index.html:1074:        Stressed: '😫',
+  static\index.html:1075:      }[mood] || '';
+  static\index.html:1076:    }
+  static\index.html:1077:
+  static\index.html:1078:    function avatarWithMood(url, mood, big) {
+> static\index.html:1345:    function startPresenceTracking() {
+  static\index.html:1346:      if (presenceInterval !== null) clearInterval(presenceInterval);
+  static\index.html:1347:      refreshPresence();
+  static\index.html:1348:      presenceInterval = setInterval(refreshPresence, 30000);
+  static\index.html:1349:    }
+  static\index.html:1350:
+  static\index.html:1351:    // ---------- routing ----------
+  static\index.html:1352:    function route() {
+  static\index.html:1353:      const h = location.hash;
+  static\index.html:1354:      document.getElementById('friendsView').hidden = true;
+  static\index.html:1355:      document.getElementById('communityView').hidden = true;
+  static\index.html:1356:      document.getElementById('adminView').hidden = !h.startsWith('#/admin');
+  static\index.html:1357:      if (h.startsWith('#/u/')) {
+  static\index.html:1358:        const [username, dashboardSection] = h.slice(4).split('#', 2);
+  static\index.html:1359:        showProfile(decodeURIComponent(username), false, dashboardSection || null);
+  static\index.html:1360:      } else if (h === '#/inbox') {
+  static\index.html:1361:        showInbox();
+
+
+    function route() {
+      const h = location.hash;
+      document.getElementById('friendsView').hidden = true;
+      document.getElementById('communityView').hidden = true;
+      document.getElementById('adminView').hidden = !h.startsWith('#/admin');
+      if (h.startsWith('#/u/')) {
+        const [username, dashboardSection] = h.slice(4).split('#', 2);
+        showProfile(decodeURIComponent(username), false, dashboardSection || null);
+      } else if (h === '#/inbox') {
+        showInbox();
+      } else if (h === '#/friends') {
+        showFriends();
+      } else if (h === '#/community' || h.startsWith('#/community/')) {
+        const id = h.startsWith('#/community/') ? Number(h.slice('#/community/'.length)) : null;
+        if (id && Number.isInteger(id)) showCommunityDetail(id); else showCommunities();
+      } else if (h === '#/admin') {
+        showAdmin();
+      } else if (h === '#/search') {
+        showUserSearch();
+      } else if (h === '#/settings' || h.startsWith('#/settings#')) {
+        showSettings(h.split('#')[2] || null);
+      } else if (h === '#/signup') {
+        showSignup();
+      } else {
+        showHome();
+      }
+    }
+
+    async function showAdmin() {
+      stopInboxPolling();
+      ['homeView', 'profileView', 'inboxView', 'userSearchView', 'settingsView', 'signupView']
+        .forEach(id => { document.getElementById(id).hidden = true; });
+      document.getElementById('appPausedView').hidden = true;
+      const view = document.getElementById('adminView');
+      view.hidden = false;
+      view.replaceChildren(el('h1', 'Admin hub', 'inbox-title'));
+      const status = el('p', 'Loading admin dataâ€¦', 'empty');
+      view.append(status);
+      try {
+        const response = await fetch('/api/admin/overview');
+        if (response.status === 403) throw new Error('This account is not an administrator. Set ADMIN_USERNAMES in the app environment and restart the server.');
+        if (!response.ok) throw new Error(response.status === 401 ? 'Please sign in again.' : 'Admin data could not be loaded.');
+        const data = await response.json();
+        currentIsAdmin = true;
+        currentIsSuperadmin = data.is_superadmin;
+        const grid = el('div', undefined, 'admin-grid');
+        [['Users', data.total_users, 'admin-users'], ['Paused accounts', data.disabled_users, 'admin-users'], ['Posts', data.total_posts, 'admin-posts'], ['Messages', data.total_messages, 'admin-conversations'], ['Chats', data.total_conversations, 'admin-conversations'], ['Group chats', data.total_groups, 'admin-conversations'], ['Reports', data.total_reports, 'admin-reports']]
+          .forEach(([label, value, target]) => {
+            const card = el('button', undefined, 'admin-stat');
+            card.type = 'button';
+            card.title = 'Open ' + label.toLowerCase() + ' details';
+            card.onclick = () => document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            card.append(el('strong', String(value)), el('span', label + ' Â· View details â†’'));
+            grid.append(card);
+          });
+        const config = el('section', undefined, 'admin-panel');
+        config.append(el('h2', 'App settings and configuration'));
+        config.append(el('p', 'Server: Rust + Axum Â· Database: PostgreSQL Â· Uploads: images and video Â· Session lifetime: 7 days', 'admin-muted'));
+        config.append(el('p', 'Admins can review app data and pause accounts. Superadmins can change app availability, manage admins, remove accounts, and delete any chat.', 'admin-muted'));
+        const signupLabel = el('label');

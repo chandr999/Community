@@ -1,0 +1,601 @@
+﻿struct Post {
+    id: i32,
+    user: String,
+    avatar_url: Option<String>,
+    mood: Option<String>,
+    image_url: String,
+    media_type: String,
+    caption: String,
+    likes: i64,
+    liked_by_me: bool,
+    dislikes: i64,
+    disliked_by_me: bool,
+    hates: i64,
+    hated_by_me: bool,
+    reshares: i64,
+    reshared_by_me: bool,
+    followed_by_me: bool,
+    favorited_by_me: bool,
+    original_author: Option<String>,
+    comment_count: i64,
+    tags: Vec<String>,
+}
+
+struct ActiveUser {
+    username: String,
+    avatar_url: Option<String>,
+    mood: Option<String>,
+}
+
+struct AdminPost {
+    id: i32,
+    author: String,
+    image_url: String,
+    media_type: String,
+    caption: String,
+    created_at: String,
+}
+
+struct CommunityPost {
+    id: i64,
+    username: String,
+    avatar_url: Option<String>,
+    title: String,
+    body: String,
+    created_at: String,
+    comment_count: i64,
+    can_delete: bool,
+    is_html: bool,
+    edited: bool,
+    can_edit: bool,
+}
+
+struct CommunityPostInput {
+    title: String,
+    body: String,
+}
+
+struct GridPost {
+    id: i32,
+    image_url: String,
+    media_type: String,
+    caption: String,
+    created_at: String,
+}
+
+struct FeedQuery {
+    scope: Option<String>,
+}
+
+struct PostReportRequest {
+    reason: String,
+    details: Option<String>,
+}
+
+async fn feed(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Query(q): Query<FeedQuery>,
+) -> Result<Json<Vec<Post>>, StatusCode> {
+    // Logged-out visitors can still read the feed; they just never have a "liked" heart.
+    let me: Option<i32> = current_user_id(&pool, &headers).await.ok();
+    // scope=following shows only your own posts and posts from people you follow.
+    let following_only = q.scope.as_deref() == Some("following");
+
+    let posts = sqlx::query_as::<_, Post>(
+        r#"
+        SELECT p.id,
+               u.username AS "user",
+               u.avatar_url,
+               u.mood,
+               p.image_url,
+               p.media_type,
+               p.caption,
+               CASE WHEN p.reshared_from_id IS NOT NULL
+                    THEN original_user.username
+               END AS original_author,
+               (SELECT COUNT(*) FROM post_likes l WHERE l.post_id = p.id) AS likes,
+               EXISTS (SELECT 1 FROM post_likes l
+                       WHERE l.post_id = p.id AND l.user_id = $1) AS liked_by_me,
+               (SELECT COUNT(*) FROM post_dislikes d WHERE d.post_id = p.id) AS dislikes,
+               EXISTS (SELECT 1 FROM post_dislikes d
+                       WHERE d.post_id = p.id AND d.user_id = $1) AS disliked_by_me,
+               (SELECT COUNT(*) FROM post_hates h WHERE h.post_id = p.id) AS hates,
+               EXISTS (SELECT 1 FROM post_hates h
+                       WHERE h.post_id = p.id AND h.user_id = $1) AS hated_by_me,
+               (SELECT COUNT(*) FROM posts shares
+                WHERE shares.reshared_from_id = COALESCE(p.reshared_from_id, p.id)) AS reshares,
+               EXISTS (SELECT 1 FROM posts shares
+                       WHERE shares.user_id = $1
+                         AND shares.reshared_from_id = COALESCE(p.reshared_from_id, p.id)) AS reshared_by_me,
+               EXISTS (SELECT 1 FROM follows f
+                       WHERE f.follower_id = $1 AND f.followee_id = u.id) AS followed_by_me,
+               EXISTS (SELECT 1 FROM user_favorites f
+                       WHERE f.user_id = $1 AND f.favorite_user_id = u.id) AS favorited_by_me,
+               (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count,
+               COALESCE((SELECT array_agg(t.username ORDER BY t.username)
+                         FROM post_tags pt JOIN users t ON t.id = pt.user_id
+                         WHERE pt.post_id = p.id), ARRAY[]::TEXT[]) AS tags
+        FROM posts p
+        JOIN users u ON u.id = p.user_id
+        LEFT JOIN posts original_post ON original_post.id = p.reshared_from_id
+        LEFT JOIN users original_user ON original_user.id = original_post.user_id
+        WHERE (NOT $2
+               OR p.user_id = $1
+               OR p.user_id IN (SELECT followee_id FROM follows WHERE follower_id = $1))
+          AND (
+              u.id = $1
+              OR (
+                  u.account_enabled
+                  AND NOT EXISTS (
+                      SELECT 1 FROM user_blocks b
+                      WHERE (b.blocker_id = u.id AND b.blocked_id = $1)
+                         OR (b.blocker_id = $1 AND b.blocked_id = u.id)
+                  )
+                  AND (
+                      u.profile_visibility = 'public'
+                      OR (
+                          u.profile_visibility = 'followers'
+                          AND EXISTS (
+                              SELECT 1 FROM follows f
+                              WHERE f.follower_id = $1 AND f.followee_id = u.id
+                          )
+                      )
+                  )
+              )
+          )
+        ORDER BY p.id DESC
+        "#,
+    )
+    .bind(me)
+    .bind(following_only)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("feed query failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(posts))
+}
+
+async fn active_users(State(pool): State<PgPool>) -> Result<Json<Vec<ActiveUser>>, StatusCode> {
+    let users = sqlx::query_as::<_, ActiveUser>(
+        r#"
+        SELECT username, avatar_url, mood
+        FROM users
+        WHERE last_active_at > now() - interval '2 minutes'
+          AND account_enabled
+          AND show_activity_status
+        ORDER BY last_active_at DESC, username
+        LIMIT 30
+        "#,
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("active users query failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(users))
+}
+
+async fn record_presence(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    sqlx::query("UPDATE users SET last_active_at = now() WHERE id = $1")
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| {
+            eprintln!("presence update failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn create_post(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    mut multipart: Multipart,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let account_enabled: bool =
+        sqlx::query_scalar("SELECT account_enabled FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| {
+                eprintln!("post account status lookup failed: {e}");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+    if !account_enabled {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    let mut caption = String::new();
+    let mut media: Option<(Vec<u8>, &'static str, &'static str)> = None;
+    let mut tags_input = String::new();
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+    {
+        let name = field.name().map(|s| s.to_string());
+        match name.as_deref() {
+            Some("caption") => {
+                caption = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+            }
+            Some("image") => {
+                let bytes = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+                if bytes.len() > 50 * 1024 * 1024 {
+                    return Err(StatusCode::PAYLOAD_TOO_LARGE);
+                }
+                let uploaded_media = if let Some(ext) = image_extension(&bytes) {
+                    (bytes.to_vec(), ext, "image")
+                } else if let Some(ext) = video_extension(&bytes) {
+                    (bytes.to_vec(), ext, "video")
+                } else {
+                    return Err(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+                };
+                media = Some(uploaded_media);
+            }
+            Some("tags") => {
+                tags_input = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+            }
+            _ => {}
+        }
+    }
+
+    let (bytes, ext, media_type) = media.ok_or(StatusCode::BAD_REQUEST)?;
+    let caption = caption.trim();
+    if caption.len() > 500 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let tags = tagged_usernames(&tags_input)?;
+    let tagged_users: Vec<(i32,)> = if tags.is_empty() {
+        Vec::new()
+    } else {
+        sqlx::query_as("SELECT id FROM users WHERE username = ANY($1)")
+            .bind(&tags)
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| {
+                eprintln!("post tag lookup failed: {e}");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+    };
+    if tagged_users.len() != tags.len() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let url = save_image(&bytes, ext).await?;
+    let result: Result<(), sqlx::Error> = async {
+        let mut tx = pool.begin().await?;
+        let (post_id,): (i32,) = sqlx::query_as(
+            "INSERT INTO posts (user_id, image_url, media_type, caption)
+             VALUES ($1, $2, $3, $4) RETURNING id",
+        )
+        .bind(user_id)
+        .bind(&url)
+        .bind(media_type)
+        .bind(caption)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        for (tagged_user_id,) in &tagged_users {
+            sqlx::query("INSERT INTO post_tags (post_id, user_id) VALUES ($1, $2)")
+                .bind(post_id)
+                .bind(tagged_user_id)
+                .execute(&mut *tx)
+                .await?;
+            if *tagged_user_id != user_id {
+                sqlx::query(
+                    "INSERT INTO activity_notifications (recipient_id, actor_id, post_id, kind)
+                     VALUES ($1, $2, $3, 'photo_tag')",
+                )
+                .bind(tagged_user_id)
+                .bind(user_id)
+                .bind(post_id)
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
+        tx.commit().await
+    }
+    .await;
+    if let Err(e) = result {
+        remove_upload(&url).await;
+        eprintln!("create post failed: {e}");
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+    Ok(StatusCode::CREATED)
+}
+
+async fn send_message(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(conversation_id): Path<i32>,
+    mut multipart: Multipart,
+) -> Result<(StatusCode, Json<DirectMessage>), StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let is_member: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM conversation_members WHERE conversation_id = $1 AND user_id = $2)",
+    )
+    .bind(conversation_id)
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("message conversation access check failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    if !is_member {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    let is_muted: bool = sqlx::query_scalar("SELECT is_muted FROM conversations WHERE id = $1")
+        .bind(conversation_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| {
+            eprintln!("conversation moderation lookup failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    if is_muted {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    let other_member_blocks_sender: bool = sqlx::query_scalar(
+        r#"
+        SELECT EXISTS (
+            SELECT 1
+            FROM conversation_members cm
+            JOIN users recipient ON recipient.id = cm.user_id
+            WHERE cm.conversation_id = $1
+              AND cm.user_id <> $2
+              AND (
+                  NOT recipient.account_enabled
+                  OR recipient.message_privacy = 'nobody'
+                  OR (
+                      recipient.message_privacy = 'following'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM follows f
+                          WHERE f.follower_id = recipient.id AND f.followee_id = $2
+                      )
+                  )
+                  OR EXISTS (
+                      SELECT 1 FROM user_blocks b
+                      WHERE (b.blocker_id = recipient.id AND b.blocked_id = $2)
+                         OR (b.blocker_id = $2 AND b.blocked_id = recipient.id)
+                  )
+              )
+        )
+        "#,
+    )
+    .bind(conversation_id)
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("message privacy check failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    if other_member_blocks_sender {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    let mut body = String::new();
+    let mut image: Option<(Vec<u8>, &'static str)> = None;
+    let mut remote_media_url: Option<String> = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+    {
+        match field.name() {
+            Some("body") => body = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?,
+            Some("remote_media_url") => {
+                let value = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+                let parsed = reqwest::Url::parse(&value).map_err(|_| StatusCode::BAD_REQUEST)?;
+                let host = parsed.host_str().unwrap_or_default();
+                if parsed.scheme() != "https"
+                    || !(host == "giphy.com" || host.ends_with(".giphy.com")
+                        || host == "upload.wikimedia.org" || host == "thumb.wikimedia.org"
+                        || host == "commons.wikimedia.org")
+                    || value.len() > 2048
+                {
+                    return Err(StatusCode::BAD_REQUEST);
+                }
+                remote_media_url = Some(value);
+            }
+            Some("image") => {
+                let bytes = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+                if bytes.len() > 50 * 1024 * 1024 {
+                    return Err(StatusCode::PAYLOAD_TOO_LARGE);
+                }
+                let extension = image_extension(&bytes)
+                    .or_else(|| video_extension(&bytes))
+                    .ok_or(StatusCode::UNSUPPORTED_MEDIA_TYPE)?;
+                image = Some((bytes.to_vec(), extension));
+            }
+            _ => {}
+        }
+    }
+    let body = body.trim();
+    if body.chars().count() > 2000 || (body.is_empty() && image.is_none() && remote_media_url.is_none()) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let image_path = if let Some(url) = remote_media_url {
+        Some(url)
+    } else if let Some((bytes, extension)) = image {
+        Some(save_private_image(&bytes, extension).await?)
+    } else {
+        None
+    };
+    let message = sqlx::query_as::<_, DirectMessage>(
+        r#"
+        WITH inserted AS (
+        INSERT INTO direct_messages (conversation_id, sender_id, body, image_path)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, sender_id, body, image_path, created_at
+        )
+        SELECT inserted.id,
+               u.username AS "sender",
+               inserted.body,
+        CASE WHEN inserted.image_path LIKE 'https://%.giphy.com/%' OR inserted.image_path LIKE 'https://%.wikimedia.org/%'
+                    THEN inserted.image_path
+                    WHEN inserted.image_path IS NOT NULL
+                    THEN '/api/messages/' || inserted.id || '/image'
+               END AS image_url,
+               CASE WHEN RIGHT(inserted.image_path, 4) = '.mp4' OR RIGHT(inserted.image_path, 5) = '.webm'
+                    THEN 'video' ELSE 'image' END AS media_type,
+               to_char(inserted.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
+               TRUE AS can_delete
+        FROM inserted JOIN users u ON u.id = inserted.sender_id
+        "#,
+    )
+    .bind(conversation_id)
+    .bind(user_id)
+    .bind(body)
+    .bind(&image_path)
+    .fetch_one(&pool)
+    .await;
+    match message {
+        Ok(message) => Ok((StatusCode::CREATED, Json(message))),
+        Err(e) => {
+            if let Some(image_path) = image_path.filter(|path| !path.starts_with("https://")) {
+                remove_private_image(&image_path).await;
+            }
+            eprintln!("send message failed: {e}");
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+async fn read_message_image(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(message_id): Path<i64>,
+) -> Result<Response, StatusCode> {
+    let user_id = current_user_id(&pool, &headers).await?;
+    let path: Option<(String,)> = sqlx::query_as(
+        r#"
+        SELECT m.image_path
+        FROM direct_messages m
+        JOIN conversation_members cm ON cm.conversation_id = m.conversation_id
+        WHERE m.id = $1 AND cm.user_id = $2 AND m.image_path IS NOT NULL
+        "#,
+    )
+    .bind(message_id)
+    .bind(user_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("message image access check failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let (path,) = path.ok_or(StatusCode::NOT_FOUND)?;
+    if path.starts_with("https://") {
+        let parsed = reqwest::Url::parse(&path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let host = parsed.host_str().unwrap_or_default();
+        if parsed.scheme() == "https" && (host == "giphy.com" || host.ends_with(".giphy.com")
+            || host == "upload.wikimedia.org" || host == "thumb.wikimedia.org" || host == "commons.wikimedia.org") {
+            return Ok(Redirect::temporary(&path).into_response());
+        }
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+    let safe =
+        !path.is_empty() && !path.contains('/') && !path.contains('\\') && !path.contains("..");
+    if !safe {
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+    let bytes = tokio::fs::read(format!("private_uploads/{path}"))
+        .await
+        .map_err(|e| {
+            eprintln!("could not read private message image: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    let content_type = match path.rsplit('.').next() {
+        Some("jpg") => "image/jpeg",
+        Some("png") => "image/png",
+        Some("webp") => "image/webp",
+        Some("gif") => "image/gif",
+        Some("mp4") => "video/mp4",
+        Some("webm") => "video/webm",
+        _ => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    };
+    Ok((
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, content_type),
+            (header::CACHE_CONTROL, "private, no-store"),
+        ],
+        bytes,
+    ).into_response())
+}
+
+struct NewsItem {
+    title: String,
+    link: String,
+    source: String,
+}
+
+struct NewsPayload {
+    local: Vec<NewsItem>,
+    world: Vec<NewsItem>,
+    tech: Vec<NewsItem>,
+}
+
+async fn get_news() -> Result<axum::Json<NewsPayload>, axum::http::StatusCode> {
+    let cache = NEWS_CACHE.get_or_init(|| tokio::sync::Mutex::new(None));
+    let mut guard = cache.lock().await;
+    if let Some((at, data)) = guard.as_ref() {
+        if at.elapsed() < NEWS_TTL {
+            return Ok(axum::Json(data.clone()));
+        }
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .user_agent("Community/1.0")
+        .build()
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
+    let (local, world, tech) = tokio::join!(
+        fetch_feed(&client, NEWS_LOCAL),
+        fetch_feed(&client, NEWS_WORLD),
+        fetch_feed(&client, NEWS_TECH),
+    );
+    let payload = NewsPayload { local, world, tech };
+    if payload.local.is_empty() && payload.world.is_empty() && payload.tech.is_empty() {
+        // all three failed: serve the last good copy if we have one
+        if let Some((_, data)) = guard.as_ref() {
+            return Ok(axum::Json(data.clone()));
+        }
+        return Err(axum::http::StatusCode::BAD_GATEWAY);
+    }
+    *guard = Some((std::time::Instant::now(), payload.clone()));
+    Ok(axum::Json(payload))
+}
+
+struct NewFeedback {
+    category: String,
+    message: String,
+    page: Option<String>,
+}
+
+struct CommunityPostEdit {
+    title: String,
+    body: String,
+}
+
+struct CommunityPostReport {
+    reason: String,
+    details: Option<String>,
+}
+
+struct ActiveCommunityMember {
+    id: i32,
+    username: String,
+    avatar_url: Option<String>,
+}
+

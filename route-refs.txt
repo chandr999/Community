@@ -1,8 +1,12 @@
-﻿1290: } else if (h === '#/inbox') {
-1292: } else if (h === '#/friends') {
-2165: ['pending_personal_requests_count', 'Pending personal requests', '#/inbox'],
-2892: if (location.hash === '#/inbox') {
-2895: location.hash = '#/inbox';
-3332: inbox.href = '#/inbox';
-3334: friends.href = '#/friends';
-3433: accept.onclick = async () => { accept.disabled = true; try { const result = await post('/api/personal-chat-requests/' + request.id + '/accept'); if (!
+﻿1360: } else if (h === '#/inbox') {
+1362: } else if (h === '#/friends') {
+2320: ['pending_personal_requests_count', 'Pending personal requests', '#/inbox'],
+3047: if (location.hash === '#/inbox') {
+3050: location.hash = '#/inbox';
+3491: inbox.href = '#/inbox';
+3493: friends.href = '#/friends';
+3558: var lastPageHash = (location.hash && location.hash !== '#/inbox') ? location.hash : '#/';
+3624: const viaRoute = location.hash === '#/inbox';
+3626: if (viaRoute && location.hash === '#/inbox') {
+3633: const link = event.target && event.target.closest ? event.target.closest('a[href="#/inbox"]') : null;
+3646: window.addEventListener('hashchange', () => { if (location.hash !== '#/inbox') lastPageHash = location.hash || '#/'; });

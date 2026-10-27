@@ -1,0 +1,140 @@
+﻿  <div id="homeView">
+    <main class="home-shell">
+      <section class="home-main" aria-label="Community feed">
+        <div class="hero">
+          <img id="heroCoverImage" class="hero-cover" alt="" hidden>
+          <div id="heroCoverActions" class="hero-cover-actions" hidden>
+            <input id="heroCoverFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+            <div class="hero-cover-buttons">
+              <button id="heroCoverChoose" type="button">Set background image</button>
+              <button id="heroCoverAdjust" type="button" aria-controls="heroCoverEditor" aria-expanded="false" hidden>Adjust position</button>
+              <button id="heroCoverRemove" class="cover-remove" type="button" hidden>Remove</button>
+            </div>
+            <div id="heroCoverEditor" class="cover-editor" hidden>
+              <div class="cover-direction-controls" role="group" aria-label="Move background image">
+                <button class="cover-move-up" type="button" data-cover-move="up" aria-label="Move image up">â†‘</button>
+                <button class="cover-move-left" type="button" data-cover-move="left" aria-label="Move image left">â†</button>
+                <button class="cover-move-right" type="button" data-cover-move="right" aria-label="Move image right">â†’</button>
+                <button class="cover-move-down" type="button" data-cover-move="down" aria-label="Move image down">â†“</button>
+              </div>
+              <div class="cover-zoom-controls" role="group" aria-label="Zoom background image">
+                <button type="button" data-cover-zoom="-10" aria-label="Zoom out">âˆ’</button>
+                <output id="coverZoomValue" class="cover-zoom-value">100%</output>
+                <button type="button" data-cover-zoom="10" aria-label="Zoom in">+</button>
+              </div>
+              <span class="cover-editor-hint">Changes save automatically.</span>
+              <button id="heroCoverSaveClose" class="cover-save-close" type="button">Save &amp; close</button>
+            </div>
+            <span id="heroCoverFeedback" class="hero-cover-feedback" aria-live="polite"></span>
+          </div>
+        </div>
+        <section class="active-users" aria-label="Online members">
+          <div id="activeUsersList" class="active-users-list" aria-live="polite">
+            <p class="active-users-empty">Checking who's online...</p>
+          </div>
+          <p id="activePresenceStatus" class="active-users-empty" hidden></p>
+        </section>
+        <div class="section-head">
+          <div>
+            <h2 class="section-title">Fresh from the community</h2>
+            <p class="section-kicker">Small moments. Big imagination.</p>
+          </div>
+          <div id="tabs"></div>
+        </div>
+        <div id="storyTray" class="story-tray" hidden></div>
+        <div id="composer"></div>
+        <div id="feed"></div>
+      </section>
+      <aside class="home-aside" aria-label="Community check-in map">
+        <section class="activity-panel sidebar-people-search" aria-label="Find people">
+          <h2 class="activity-heading">Find people</h2>
+          <form id="sidebarPeopleSearchForm" class="user-search-form">
+            <input id="sidebarPeopleSearchInput" type="search" name="q" maxlength="50" autocomplete="off" placeholder="Search by name or username" aria-label="Search people by name or username">
+            <button type="submit">Search</button>
+          </form>
+          <p id="sidebarPeopleSearchStatus" class="user-search-message" aria-live="polite">Search by a personâ€™s name or username.</p>
+          <div id="sidebarPeopleSearchResults" class="user-search-results" aria-live="polite"></div>
+        </section>
+        <section id="activityPanel" class="activity-panel" aria-label="Your activity" hidden>
+          <h2 class="activity-heading">Your little corner</h2>
+          <div class="activity-group">
+            <h3 class="activity-subhead">Mentions &amp; photo tags</h3>
+            <div id="activityNotifications" class="activity-list"></div>
+          </div>
+          <div class="activity-group">
+            <h3 class="activity-subhead">Recent profile visitors</h3>
+            <div id="profileVisitors" class="activity-list"></div>
+          </div>
+        </section>
+      <section id="newsPanel" class="activity-panel" aria-label="Top stories">
+  <h2 class="activity-heading">Top stories</h2>
+  <div id="newsBody"><p class="news-note">Loading headlines...</p></div>
+</section>
+      <section id="funPanel" class="activity-panel" aria-label="Fun facts and quotes">
+  <h2 class="activity-heading">Fun fact</h2>
+  <p id="funFactText" class="fun-text"></p>
+  <button id="funFactNext" class="fun-next" type="button">Another one</button>
+  <div class="dark-quote">
+    <h3 class="dark-quote-head">Dark quote</h3>
+    <p id="darkQuoteText" class="dark-quote-text"></p>
+    <button id="darkQuoteNext" class="fun-next dark-next" type="button">Next quote</button>
+  </div>
+</section>
+      </aside>
+    </main>
+  </div>
+  <div id="profileView" hidden></div>
+  <div id="inboxView" hidden></div>
+  <div id="friendsView" hidden></div>
+  <div id="communityView" hidden></div>
+  <div id="adminView" hidden></div>
+  <div id="appPausedView" class="app-paused-view" hidden>
+    <section class="settings-card"><h1>Community is temporarily paused</h1><p>A superadmin can sign in to the Admin hub to turn the app back on.</p></section>
+  </div>
+  <div id="userSearchView" hidden></div>
+  <div id="settingsView" hidden></div>
+  <div id="signupView" hidden></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script>
+    let loggedIn = false;
+    let currentUsername = '';
+    let currentIsAdmin = false;
+    let currentIsSuperadmin = false;
+    let appEnabled = true;
+    let scope = 'all'; // 'all' or 'following'
+    let activeConversationId = null;
+    let inboxPoll = null;
+    let presenceInterval = null;
+    let coverPosition = { x: 50, y: 50, zoom: 100 };
+    let coverPositionEditing = false;
+    let communityMap = null;
+    let checkinMarkerLayer = null;
+    let liveLocationMarkerLayer = null;
+    let selectedCheckinMarker = null;
+    let selectedMapPoint = null;
+    let liveLocationWatchId = null;
+    let liveLocationRefreshInterval = null;
+    let liveMapRefreshInterval = null;
+    let latestLivePosition = null;
+    let lastLivePositionSentAt = 0;
+    const checkinCategories = [
+      { key: 'all', label: 'All check-ins', icon: 'âœ¦' },
+      { key: 'nightclubs', label: 'Nightclubs', icon: 'â™«' },
+      { key: 'bars', label: 'Bars', icon: 'â—’' },
+      { key: 'pubs', label: 'Pubs', icon: 'âŒ‚' },
+      { key: 'restaurants', label: 'Restaurants', icon: 'â™¨' },
+      { key: 'hotels', label: 'Hotels', icon: 'âŒ‚' },
+      { key: 'movies', label: 'Movies', icon: 'â–£' },
+      { key: 'concerts', label: 'Concerts', icon: 'â™ª' },
+      { key: 'travel', label: 'Travel', icon: 'â†—' },
+      { key: 'dining', label: 'Food & dining', icon: 'âœ§' },
+      { key: 'outdoors', label: 'Outdoors', icon: 'â‹' },
+    ];
+    let selectedCheckinCategory = 'all';
+    let checkinOffset = 0;
+    let checkinRequestSequence = 0;
+
+    function el(tag, text, cls) {
+      const e = document.createElement(tag);
+      if (text !== undefined) e.textContent = text;

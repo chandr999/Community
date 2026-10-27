@@ -1,0 +1,220 @@
+﻿    async function showProfile(name, editing, dashboardSection = null) {
+      stopInboxPolling();
+      document.getElementById('homeView').hidden = true;
+      document.getElementById('inboxView').hidden = true;
+      document.getElementById('userSearchView').hidden = true;
+      document.getElementById('settingsView').hidden = true;
+      document.getElementById('signupView').hidden = true;
+      const view = document.getElementById('profileView');
+      view.hidden = false;
+      view.textContent = '';
+
+      const back = el('a', 'â† Back to feed', 'back');
+      back.href = '#/';
+      view.append(back);
+
+      const res = await fetch('/api/users/' + encodeURIComponent(name));
+      if (!res.ok) { view.append(el('p', 'User not found', 'empty')); return; }
+      const pr = await res.json();
+
+      const profileHero = el('section', undefined, 'profile-hero');
+      const profileCover = el('div', undefined, 'profile-cover');
+      if (pr.cover_image_url) { const cover = el('img'); cover.src = pr.cover_image_url; cover.alt = ''; profileCover.append(cover); }
+      const profileHeroBody = el('div', undefined, 'profile-hero-body');
+      const head = el('div', undefined, 'phead');
+      head.append(avatarWithMood(pr.avatar_url, pr.mood, true));
+      const info = el('div');
+      const usernameLine = el('div', undefined, 'profile-username-line');
+      usernameLine.append(el('span', '@' + pr.username, pr.display_name ? 'psub' : 'pname'));
+      if (loggedIn && !pr.is_me) {
+        const actions = el('details', undefined, 'profile-actions');
+        const summary = el('summary', 'Actions â–¾');
+        summary.setAttribute('aria-label', 'Actions for @' + pr.username);
+        const menu = el('div', undefined, 'profile-actions-menu');
+        const viewProfile = el('a', 'View profile');
+        viewProfile.setAttribute('aria-label', 'View profile for @' + pr.username);
+        viewProfile.href = '#/u/' + encodeURIComponent(pr.username);
+        viewProfile.onclick = () => { actions.open = false; };
+        const messageButton = el('button', 'Send message');
+        messageButton.type = 'button';
+        messageButton.setAttribute('aria-label', 'Send message to @' + pr.username);
+        const messageError = el('span', undefined, 'profile-message-error');
+        messageButton.onclick = async () => {
+          messageButton.disabled = true;
+          messageError.textContent = '';
+          try {
+            const response = await post('/api/conversations', {
+              usernames: [pr.username],
+              title: '',
+            });
+            if (!response.ok) {
+              messageError.textContent = response.status === 401
+                ? 'Please log in again.'
+                : 'Could not start a conversation.';
+              return;
+            }
+            const conversation = await response.json();
+            activeConversationId = conversation.id;
+            if (location.hash === '#/inbox') {
+              await showInbox();
+            } else {
+              location.hash = '#/inbox';
+            }
+          } catch {
+            messageError.textContent = 'Could not start a conversation. Check your connection and try again.';
+          } finally {
+            messageButton.disabled = false;
+          }
+        };
+        menu.append(viewProfile, messageButton, messageError);
+        actions.append(summary, menu);
+        const followButton = el('button', pr.followed_by_me ? 'Unfollow' : 'Follow', 'profile-follow-button');
+        followButton.type = 'button';
+        followButton.setAttribute('aria-pressed', String(pr.followed_by_me));
+        const followStatus = el('span', undefined, 'profile-follow-status');
+        followStatus.setAttribute('role', 'status');
+        followButton.onclick = async () => {
+          followButton.disabled = true;
+          followStatus.textContent = '';
+          try {
+            const response = await fetch(
+              '/api/users/' + encodeURIComponent(pr.username) + '/follow',
+              { method: pr.followed_by_me ? 'DELETE' : 'POST' },
+            );
+            if (!response.ok) throw new Error('Follow update failed: ' + response.status);
+            await showProfile(pr.username);
+          } catch (error) {
+            console.error('Could not update profile follow:', error);
+            followStatus.textContent = 'Could not update follow. Please try again.';
+          } finally {
+            followButton.disabled = false;
+          }
+        };
+        usernameLine.append(actions, followButton, followStatus);
+      }
+      if (pr.display_name) {
+        info.append(el('div', pr.display_name, 'pname'), usernameLine);
+      } else {
+        info.append(usernameLine);
+      }
+
+      if (pr.is_me) {
+        const eb = el('button', editing ? 'Cancel' : 'Edit profile');
+        eb.onclick = () => showProfile(pr.username, !editing);
+        const pictureInput = el('input');
+        pictureInput.type = 'file';
+        pictureInput.accept = 'image/jpeg,image/png,image/webp,image/gif';
+        pictureInput.hidden = true;
+        const pictureButton = el('button', pr.avatar_url ? 'Update profile picture' : 'Add profile picture');
+        pictureButton.type = 'button';
+        const pictureStatus = el('span', undefined, 'profile-feedback');
+        pictureButton.onclick = () => pictureInput.click();
+        pictureInput.onchange = async () => {
+          if (!pictureInput.files || !pictureInput.files[0]) return;
+          const form = new FormData();
+          form.append('image', pictureInput.files[0]);
+          pictureButton.disabled = true;
+          pictureStatus.textContent = 'Uploading profile picture...';
+          try {
+            const response = await fetch('/api/me/avatar', { method: 'POST', body: form });
+            if (response.ok) {
+              showProfile(pr.username, editing);
+            } else if (response.status === 413) {
+              pictureStatus.textContent = 'Picture too large (max 5 MB).';
+            } else if (response.status === 415) {
+              pictureStatus.textContent = 'Choose a JPEG, PNG, WebP or GIF picture.';
+            } else if (response.status === 401) {
+              pictureStatus.textContent = 'Please log in again.';
+            } else {
+              pictureStatus.textContent = 'Could not update your profile picture.';
+            }
+          } catch (error) {
+            console.error('Could not update profile picture:', error);
+            pictureStatus.textContent = 'Could not update your picture. Check your connection and try again.';
+          } finally {
+            pictureInput.value = '';
+            pictureButton.disabled = false;
+          }
+        };
+        const pictureRow = el('div', undefined, 'row');
+        pictureRow.append(eb, pictureButton, pictureInput, pictureStatus);
+        info.append(pictureRow);
+      } else if (!loggedIn) {
+        info.append(el('span', 'Log in to follow', 'hint'));
+      } else {
+        if (pr.followed_by_me || pr.admired_by_me) {
+          const admireButton = el('button', pr.admired_by_me ? 'â™¥ Admired' : 'â™¡ Admire');
+          admireButton.type = 'button';
+          admireButton.setAttribute('aria-pressed', String(pr.admired_by_me));
+          admireButton.onclick = async () => {
+            admireButton.disabled = true;
+            try {
+              const response = await fetch(
+                '/api/users/' + encodeURIComponent(pr.username) + '/admire',
+                { method: pr.admired_by_me ? 'DELETE' : 'POST' },
+              );
+              if (response.ok) showProfile(pr.username);
+              else alert(response.status === 403
+                ? 'Follow this person before sending admiration.'
+                : 'Could not update admiration. Please try again.');
+            } catch (error) {
+              console.error('Could not update profile admiration:', error);
+              alert('Could not update admiration. Check your connection and try again.');
+            } finally {
+              admireButton.disabled = false;
+            }
+          };
+          info.append(admireButton);
+        }
+        const requestButton = el('button', 'Request personal chat');
+        requestButton.type = 'button';
+        const requestFeedback = el('span', undefined, 'profile-feedback');
+        requestButton.onclick = async () => {
+          requestButton.disabled = true;
+          requestFeedback.textContent = '';
+          try {
+            const response = await post(
+              '/api/users/' + encodeURIComponent(pr.username) + '/personal-chat-requests',
+            );
+            if (response.ok) requestFeedback.textContent = 'Request sent. They can accept or decline it.';
+            else requestFeedback.textContent = response.status === 404
+              ? 'This profile is no longer available.'
+              : 'Could not send the request. Please try again.';
+          } catch (error) {
+            console.error('Could not send personal chat request:', error);
+            requestFeedback.textContent = 'Could not send the request. Check your connection and try again.';
+          } finally {
+            requestButton.disabled = false;
+          }
+        };
+        info.append(requestButton, requestFeedback);
+      }
+      head.append(info);
+      profileHeroBody.append(head);
+      profileHero.append(profileCover, profileHeroBody);
+      view.append(profileHero);
+
+      if (editing && pr.is_me) view.append(editForm(pr));
+
+      const stats = el('div', undefined, 'stats');
+      stats.append(
+        el('span', pr.post_count + (pr.post_count === 1 ? ' post' : ' posts')),
+      );
+      const connectionsPanel = el('section', undefined, 'connections-panel');
+      connectionsPanel.hidden = true;
+      connectionsPanel.setAttribute('aria-live', 'polite');
+      const connectionsHeading = el('h2');
+      const connectionsList = el('div', undefined, 'connections-list');
+      connectionsPanel.append(connectionsHeading, connectionsList);
+      let openConnectionKind = null;
+      async function showConnections(kind, count) {
+        if (openConnectionKind === kind) {
+          openConnectionKind = null;
+          connectionsPanel.hidden = true;
+          return;
+        }
+        openConnectionKind = kind;
+        connectionsPanel.hidden = false;
+        connectionsHeading.textContent = kind === 'followers'
+          ? count + (count === 1 ? ' follower' : ' followers')
+          : count + ' following';

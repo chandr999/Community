@@ -1,0 +1,82 @@
+﻿
+  static\index.html:3426:          );
+  static\index.html:3427:        } else {
+  static\index.html:3428:          scrollToDashboardTarget();
+  static\index.html:3429:        }
+  static\index.html:3430:      }
+  static\index.html:3431:    }
+  static\index.html:3432:
+  static\index.html:3433:    // ---------- composer / auth ----------
+  static\index.html:3434:    function renderComposer() {
+  static\index.html:3435:      const box = document.getElementById('composer');
+  static\index.html:3436:      box.textContent = '';
+  static\index.html:3437:      if (!loggedIn) return;
+  static\index.html:3438:
+  static\index.html:3439:      const file = el('input');
+  static\index.html:3440:      file.type = 'file';
+  static\index.html:3441:      file.accept = 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm';
+  static\index.html:3442:      const mediaHint = el('span', 'Photos: JPEG, PNG, WebP or GIF. Videos: MP4 or WebM, up to 50 MB.', 'note');
+  static\index.html:3443:      const cap = el('input'); cap.type = 'text'; cap.placeholder = 'Caption';
+  static\index.html:3444:      const tags = el('input'); tags.type = 'text'; tags.placeholder = 'Tag people (usernames, comma-separated; up 
+to 10)';
+  static\index.html:3445:      const msg = el('span'); msg.style.color = '#c00'; msg.style.fontSize = '12px';
+  static\index.html:3446:      const btn = el('button', 'Post');
+  static\index.html:3447:
+  static\index.html:3448:      btn.onclick = async () => {
+  static\index.html:3449:        if (!file.files[0]) { msg.textContent = 'Choose a photo or video first'; return; }
+  static\index.html:3450:        const fd = new FormData();
+  static\index.html:3451:        fd.append('caption', cap.value);
+  static\index.html:3452:        fd.append('tags', tags.value);
+  static\index.html:3453:        fd.append('image', file.files[0]);
+  static\index.html:3454:        btn.disabled = true;
+  static\index.html:3455:        msg.textContent = 'Uploading...';
+> static\index.html:3456:        const r = await fetch('/api/posts', { method: 'POST', body: fd });
+  static\index.html:3457:        btn.disabled = false;
+  static\index.html:3458:        if (r.ok) { file.value = ''; cap.value = ''; tags.value = ''; msg.textContent = ''; loadFeed(); 
+loadActivity(); }
+  static\index.html:3459:        else if (r.status === 413) msg.textContent = 'Video too large (max 50 MB).';
+  static\index.html:3460:        else if (r.status === 415) msg.textContent = 'Choose a JPEG, PNG, WebP, GIF, MP4 or WebM file.';
+  static\index.html:3461:        else if (r.status === 400) msg.textContent = 'Check the photo/video, caption length, and tagged usernames 
+(up to 10 existing users)';
+  static\index.html:3462:        else if (r.status === 401) msg.textContent = 'Please log in again';
+  static\index.html:3463:        else msg.textContent = 'Something went wrong';
+  static\index.html:3464:      };
+  static\index.html:3465:      box.append(file, mediaHint, cap, tags, btn, msg);
+  static\index.html:3466:    }
+  static\index.html:3467:
+  static\index.html:3468:    async function renderAuth() {
+  static\index.html:3469:      const box = document.getElementById('auth');
+  static\index.html:3470:      box.textContent = '';
+  static\index.html:3471:      try {
+  static\index.html:3472:        const statusResponse = await fetch('/api/status');
+  static\index.html:3473:        if (statusResponse.ok) appEnabled = await statusResponse.json();
+  static\index.html:3474:      } catch { appEnabled = true; }
+  static\index.html:3475:      const res = await fetch('/api/me');
+  static\index.html:3476:      loggedIn = res.ok;
+  static\index.html:3477:      renderComposer();
+  static\index.html:3478:
+  static\index.html:3479:      if (res.ok) {
+  static\index.html:3480:        const me = await res.json();
+  static\index.html:3481:        currentUsername = me.username;
+  static\index.html:3482:        currentIsAdmin = me.is_admin;
+  static\index.html:3483:        currentIsSuperadmin = me.is_superadmin;
+  static\index.html:3484:        setHomeCover(
+  static\index.html:3485:          me.cover_image_url,
+  static\index.html:3486:          me.cover_position_x,
+  static\index.html:3487:          me.cover_position_y,
+  static\index.html:3488:          me.cover_zoom,
+  static\index.html:3489:        );
+  static\index.html:3490:        const inbox = el('a', 'Chats', 'inbox-link');
+  static\index.html:3491:        inbox.href = '#/inbox';
+  static\index.html:3492:        const friends = el('a', 'Friends', 'inbox-link');
+  static\index.html:3493:        friends.href = '#/friends';
+  static\index.html:3494:        const communities = el('a', 'Community', 'inbox-link');
+  static\index.html:3495:        communities.href = '#/community';
+  static\index.html:3496:        const settings = el('a', 'Settings', 'inbox-link');
+  static\index.html:3497:        settings.href = '#/settings';
+  static\index.html:3498:        if (me.is_admin && (appEnabled || me.is_superadmin)) {
+  static\index.html:3499:          const admin = el('a', 'Admin hub', 'inbox-link admin-link');
+  static\index.html:3500:          admin.href = '#/admin';
+  static\index.html:3501:          box.append(admin);
+
+
