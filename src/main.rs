@@ -54,6 +54,10 @@ struct Post {
     original_author: Option<String>,
     comment_count: i64,
     tags: Vec<String>,
+    #[sqlx(default)]
+    attachment_name: Option<String>,
+    #[sqlx(default)]
+    attachment_size: Option<i64>,
 }
 
 #[derive(Serialize, FromRow)]
@@ -815,6 +819,8 @@ async fn feed(
                p.image_url,
                p.media_type,
                p.caption,
+               p.attachment_name,
+               p.attachment_size,
                CASE WHEN p.reshared_from_id IS NOT NULL
                     THEN original_user.username
                END AS original_author,
@@ -2269,6 +2275,8 @@ async fn create_post(
 
     let mut caption = String::new();
     let mut media: Option<(Vec<u8>, &'static str, &'static str)> = None;
+    let mut remote_media_url: Option<String> = None;
+    let mut attachment: Option<(Vec<u8>, String, &'static str)> = None;
     let mut tags_input = String::new();
 
     while let Some(field) = multipart
@@ -2295,6 +2303,20 @@ async fn create_post(
                 };
                 media = Some(uploaded_media);
             }
+            Some("remote_media_url") => {
+                remote_media_url = Some(field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?);
+            }
+            Some("attachment") => {
+                let file_name = field.file_name().map(|s| s.to_string()).unwrap_or_default();
+                let bytes = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+                if bytes.len() > MAX_ATTACHMENT_BYTES {
+                    return Err(StatusCode::PAYLOAD_TOO_LARGE);
+                }
+                let display_name = clean_attachment_name(&file_name);
+                let ext = attachment_extension(&display_name, &bytes)
+                    .ok_or(StatusCode::UNSUPPORTED_MEDIA_TYPE)?;
+                attachment = Some((bytes.to_vec(), display_name, ext));
+            }
             Some("tags") => {
                 tags_input = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?;
             }
@@ -2302,9 +2324,16 @@ async fn create_post(
         }
     }
 
-    let (bytes, ext, media_type) = media.ok_or(StatusCode::BAD_REQUEST)?;
+    if media.is_none() {
+        if let Some(value) = remote_media_url.as_deref() {
+            media = Some(fetch_remote_post_media(value).await?);
+        }
+    }
     let caption = caption.trim();
-    if caption.len() > 500 {
+    if caption.chars().count() > MAX_POST_TEXT_CHARS {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if caption.is_empty() && media.is_none() && attachment.is_none() {
         return Err(StatusCode::BAD_REQUEST);
     }
     let tags = tagged_usernames(&tags_input)?;
@@ -2324,17 +2353,51 @@ async fn create_post(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let url = save_image(&bytes, ext).await?;
+    let (url, media_type): (String, &'static str) = if let Some((bytes, ext, kind)) = media {
+        (save_image(&bytes, ext).await?, kind)
+    } else {
+        (TEXT_POST_URL.to_string(), "text")
+    };
+    let has_media_file = media_type != "text";
+
+    let mut saved_attachment: Option<(String, String, i64)> = None;
+    if let Some((bytes, display_name, ext)) = attachment {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let stored = format!("post-{user_id}-{stamp}.{ext}");
+        let saved: Result<(), std::io::Error> = async {
+            tokio::fs::create_dir_all("private_uploads").await?;
+            tokio::fs::write(format!("private_uploads/{stored}"), &bytes).await
+        }
+        .await;
+        if let Err(e) = saved {
+            eprintln!("post attachment save failed: {e}");
+            if has_media_file {
+                remove_upload(&url).await;
+            }
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+        saved_attachment = Some((stored, display_name, bytes.len() as i64));
+    }
+    let attachment_path: Option<String> = saved_attachment.as_ref().map(|a| a.0.clone());
+    let attachment_name: Option<String> = saved_attachment.as_ref().map(|a| a.1.clone());
+    let attachment_size: Option<i64> = saved_attachment.as_ref().map(|a| a.2);
+
     let result: Result<(), sqlx::Error> = async {
         let mut tx = pool.begin().await?;
         let (post_id,): (i32,) = sqlx::query_as(
-            "INSERT INTO posts (user_id, image_url, media_type, caption)
-             VALUES ($1, $2, $3, $4) RETURNING id",
+            "INSERT INTO posts (user_id, image_url, media_type, caption, attachment_path, attachment_name, attachment_size)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
         )
         .bind(user_id)
         .bind(&url)
         .bind(media_type)
         .bind(caption)
+        .bind(&attachment_path)
+        .bind(&attachment_name)
+        .bind(attachment_size)
         .fetch_one(&mut *tx)
         .await?;
 
@@ -2360,11 +2423,219 @@ async fn create_post(
     }
     .await;
     if let Err(e) = result {
-        remove_upload(&url).await;
+        if has_media_file {
+            remove_upload(&url).await;
+        }
+        if let Some(stored) = &attachment_path {
+            let _ = tokio::fs::remove_file(format!("private_uploads/{stored}")).await;
+        }
         eprintln!("create post failed: {e}");
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
     Ok(StatusCode::CREATED)
+}
+
+const TEXT_POST_URL: &str = "/uploads/text-only";
+const MAX_POST_TEXT_CHARS: usize = 2000;
+const MAX_ATTACHMENT_BYTES: usize = 20 * 1024 * 1024;
+const MAX_REMOTE_MEDIA_BYTES: usize = 25 * 1024 * 1024;
+
+fn clean_attachment_name(raw: &str) -> String {
+    let base = raw.rsplit(|c: char| c == '/' || c == '\\').next().unwrap_or("");
+    let cleaned: String = base
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_' || c == ' ' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let cleaned: String = cleaned.trim().trim_matches('.').chars().take(80).collect();
+    if cleaned.is_empty() {
+        "attachment".to_string()
+    } else {
+        cleaned
+    }
+}
+
+fn attachment_extension(name: &str, bytes: &[u8]) -> Option<&'static str> {
+    let ext = name.rsplit('.').next()?.to_ascii_lowercase();
+    let zip = bytes.starts_with(b"PK\x03\x04");
+    let ole = bytes.starts_with(&[0xD0, 0xCF, 0x11, 0xE0]);
+    let text = std::str::from_utf8(bytes).is_ok();
+    match ext.as_str() {
+        "pdf" if bytes.starts_with(b"%PDF") => Some("pdf"),
+        "docx" if zip => Some("docx"),
+        "xlsx" if zip => Some("xlsx"),
+        "pptx" if zip => Some("pptx"),
+        "zip" if zip => Some("zip"),
+        "doc" if ole => Some("doc"),
+        "xls" if ole => Some("xls"),
+        "ppt" if ole => Some("ppt"),
+        "rtf" if bytes.starts_with(b"{\\rtf") => Some("rtf"),
+        "txt" if text => Some("txt"),
+        "csv" if text => Some("csv"),
+        "md" if text => Some("md"),
+        _ => None,
+    }
+}
+
+async fn fetch_remote_post_media(
+    value: &str,
+) -> Result<(Vec<u8>, &'static str, &'static str), StatusCode> {
+    if value.len() > 2048 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let parsed = reqwest::Url::parse(value).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let host = parsed.host_str().unwrap_or_default().to_string();
+    if parsed.scheme() != "https"
+        || !(host == "giphy.com"
+            || host.ends_with(".giphy.com")
+            || host == "upload.wikimedia.org"
+            || host == "thumb.wikimedia.org"
+            || host == "commons.wikimedia.org")
+    {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .redirect(reqwest::redirect::Policy::none())
+        .user_agent("Community/1.0")
+        .build()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let response = client.get(parsed).send().await.map_err(|e| {
+        eprintln!("remote post media fetch failed: {e}");
+        StatusCode::BAD_GATEWAY
+    })?;
+    if !response.status().is_success() {
+        return Err(StatusCode::BAD_GATEWAY);
+    }
+    if response
+        .content_length()
+        .map(|n| n as usize > MAX_REMOTE_MEDIA_BYTES)
+        .unwrap_or(false)
+    {
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    let bytes = response.bytes().await.map_err(|e| {
+        eprintln!("remote post media read failed: {e}");
+        StatusCode::BAD_GATEWAY
+    })?;
+    if bytes.len() > MAX_REMOTE_MEDIA_BYTES {
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    if let Some(ext) = image_extension(&bytes) {
+        Ok((bytes.to_vec(), ext, "image"))
+    } else if let Some(ext) = video_extension(&bytes) {
+        Ok((bytes.to_vec(), ext, "video"))
+    } else {
+        Err(StatusCode::UNSUPPORTED_MEDIA_TYPE)
+    }
+}
+
+async fn presence_lookup(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<Vec<(String, Option<String>, bool)>>, StatusCode> {
+    let me: Option<i32> = current_user_id(&pool, &headers).await.ok();
+    let names: Vec<String> = params
+        .get("users")
+        .map(|raw| {
+            raw.split(',')
+                .map(|s| s.trim().to_lowercase())
+                .filter(|s| !s.is_empty() && s.len() <= 50)
+                .take(100)
+                .collect()
+        })
+        .unwrap_or_default();
+    if names.is_empty() {
+        return Ok(Json(Vec::new()));
+    }
+    let rows: Vec<(String, Option<String>, bool)> = sqlx::query_as(
+        r#"
+        SELECT u.username,
+               CASE WHEN u.profile_visibility = 'public'
+                      OR u.id = $2
+                      OR EXISTS (SELECT 1 FROM follows f
+                                 WHERE f.follower_id = $2 AND f.followee_id = u.id)
+                    THEN u.avatar_url END AS avatar_url,
+               COALESCE(u.account_enabled AND u.show_activity_status
+                        AND u.last_active_at > now() - interval '2 minutes', FALSE) AS online
+        FROM users u
+        WHERE lower(u.username) = ANY($1) AND u.account_enabled
+        "#,
+    )
+    .bind(&names)
+    .bind(me)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("presence lookup failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(rows))
+}
+
+async fn read_post_attachment(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(post_id): Path<i32>,
+) -> Result<Response, StatusCode> {
+    let _user_id = current_user_id(&pool, &headers).await?;
+    let row: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT attachment_path, attachment_name FROM posts WHERE id = $1 AND attachment_path IS NOT NULL",
+    )
+    .bind(post_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| {
+        eprintln!("post attachment lookup failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let (path, name) = match row {
+        Some((Some(path), name)) => (path, name.unwrap_or_else(|| "attachment".to_string())),
+        _ => return Err(StatusCode::NOT_FOUND),
+    };
+    let safe =
+        !path.is_empty() && !path.contains('/') && !path.contains('\\') && !path.contains("..");
+    if !safe {
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+    let bytes = tokio::fs::read(format!("private_uploads/{path}"))
+        .await
+        .map_err(|e| {
+            eprintln!("could not read post attachment: {e}");
+            StatusCode::NOT_FOUND
+        })?;
+    let content_type = match path.rsplit('.').next() {
+        Some("pdf") => "application/pdf",
+        Some("docx") => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        Some("xlsx") => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        Some("pptx") => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        Some("zip") => "application/zip",
+        Some("doc") => "application/msword",
+        Some("xls") => "application/vnd.ms-excel",
+        Some("ppt") => "application/vnd.ms-powerpoint",
+        Some("rtf") => "application/rtf",
+        Some("txt") | Some("md") => "text/plain; charset=utf-8",
+        Some("csv") => "text/csv; charset=utf-8",
+        _ => "application/octet-stream",
+    };
+    let disposition = format!("attachment; filename=\"{}\"", name.replace('"', "_"));
+    Ok((
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, content_type.to_string()),
+            (header::CONTENT_DISPOSITION, disposition),
+            (header::CACHE_CONTROL, "private, no-store".to_string()),
+            (header::X_CONTENT_TYPE_OPTIONS, "nosniff".to_string()),
+        ],
+        bytes,
+    )
+        .into_response())
 }
 
 async fn like_post(
@@ -5645,6 +5916,8 @@ async fn main() {
             post(reject_personal_chat_request),
         )
         .route("/api/users/active", get(active_users))
+        .route("/api/presence", get(presence_lookup))
+        .route("/api/posts/{id}/attachment", get(read_post_attachment))
         .route(
             "/api/conversations",
             get(list_conversations).post(create_conversation),
